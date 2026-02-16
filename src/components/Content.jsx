@@ -1,9 +1,8 @@
 import { useState, useRef } from 'react'
-import { IoMenu, IoCreate, IoDownload, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink } from 'react-icons/io5'
+import { IoMenu, IoCreate, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink } from 'react-icons/io5'
 import MarkdownViewer from './MarkdownViewer'
 import MarkdownEditor from './MarkdownEditor'
 import WelcomeScreen from './WelcomeScreen'
-import { downloadMarkdown } from '../utils/markdown'
 
 function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible }) {
   const [isEditMode, setIsEditMode] = useState(false)
@@ -31,12 +30,6 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
   const handleCancel = () => {
     setIsEditMode(false)
     setEditContent('')
-  }
-
-  const handleExport = () => {
-    if (file) {
-      downloadMarkdown(file.name, file.content)
-    }
   }
 
   const scrollToTop = () => {
@@ -82,24 +75,14 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
             </div>
             <div className="flex gap-2 flex-wrap">
               {!isEditMode ? (
-                <>
-                  <button
-                    className="px-4 py-2 bg-indigo-500 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-indigo-600 active:scale-95 flex items-center gap-2 shadow-sm"
-                    onClick={handleEdit}
-                    title="Edit markdown"
-                  >
-                    <IoCreate className="w-4 h-4" />
-                    Edit
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-gray-600 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-gray-700 active:scale-95 flex items-center gap-2 shadow-sm"
-                    onClick={handleExport}
-                    title="Export to .md file"
-                  >
-                    <IoDownload className="w-4 h-4" />
-                    Export
-                  </button>
-                </>
+                <button
+                  className="px-4 py-2 bg-indigo-500 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-indigo-600 active:scale-95 flex items-center gap-2 shadow-sm"
+                  onClick={handleEdit}
+                  title="Edit markdown"
+                >
+                  <IoCreate className="w-4 h-4" />
+                  Edit
+                </button>
               ) : (
                 <>
                   {fileHandle ? (
