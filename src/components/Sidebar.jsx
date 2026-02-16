@@ -22,9 +22,9 @@ function Sidebar({
             <div className="w-9 h-9 bg-indigo-500 rounded-lg flex items-center justify-center">
               <IoBook className="w-5 h-5 text-white" />
             </div>
-            <span>Markdown Viewer</span>
+            <span>Markdown Editor</span>
           </h1>
-          <p className="text-xs text-gray-600 ml-12">Professional documentation viewer</p>
+          <p className="text-xs text-gray-600 ml-12">Edit with live preview & auto-sync</p>
         </div>
         <div>
           {isFileSystemAccessSupported() ? (

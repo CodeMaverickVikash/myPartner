@@ -7,7 +7,7 @@ function WelcomeScreen() {
         {/* Hero Section */}
         <div className="text-center mb-13">
           <h1 className="text-1xl md:text-3xl mb-4 text-gray-900 font-bold tracking-tight">
-            Markdown Viewer
+            Markdown Editor
           </h1>
           <p className="text-sm text-gray-500 leading-relaxed max-w-xl mx-auto">
             Open, edit, and preview your markdown files with direct system access
