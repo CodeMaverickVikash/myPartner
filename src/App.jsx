@@ -34,30 +34,7 @@ function App() {
     }
   }, [files])
 
-  const handleFileUpload = (uploadedFiles) => {
-    const newFiles = new Map(files)
-    
-    uploadedFiles.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const fileData = {
-          id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          name: file.name.replace('.md', '').replace('.markdown', ''),
-          content: e.target.result,
-          uploadedAt: new Date().toISOString()
-        }
-        
-        newFiles.set(fileData.id, fileData)
-        setFiles(new Map(newFiles))
-        
-        // Set as current file if it's the first one
-        if (newFiles.size === 1) {
-          setCurrentFileId(fileData.id)
-        }
-      }
-      reader.readAsText(file)
-    })
-  }
+
 
   const handleFileRemove = (fileId) => {
     if (confirm('Are you sure you want to remove this file?')) {
@@ -290,7 +267,6 @@ function App() {
           currentFileId={currentFileId}
           onFileSelect={setCurrentFileId}
           onFileRemove={handleFileRemove}
-          onFileUpload={handleFileUpload}
           onOpenFromSystem={handleOpenFromSystem}
           visible={sidebarVisible}
         />

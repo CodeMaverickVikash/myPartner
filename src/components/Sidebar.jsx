@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { IoBook, IoCloudUpload, IoSearch, IoDocument, IoClose, IoFolderOpen, IoFolder, IoLink } from 'react-icons/io5'
+import { IoBook, IoDocument, IoClose, IoFolderOpen, IoFolder, IoLink } from 'react-icons/io5'
 import { extractHeadings } from '../utils/markdown'
 import { isFileSystemAccessSupported } from '../utils/fileSystem'
 
@@ -8,45 +7,9 @@ function Sidebar({
   currentFileId,
   onFileSelect,
   onFileRemove,
-  onFileUpload,
   onOpenFromSystem,
   visible
 }) {
-  const fileInputRef = useRef(null)
-
-  const handleFileInputChange = (e) => {
-    const selectedFiles = Array.from(e.target.files)
-    if (selectedFiles.length > 0) {
-      onFileUpload(selectedFiles)
-    }
-    e.target.value = '' // Reset input
-  }
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    e.currentTarget.classList.add('drag-over')
-  }
-
-  const handleDragLeave = (e) => {
-    e.currentTarget.classList.remove('drag-over')
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    e.currentTarget.classList.remove('drag-over')
-    
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(
-      file => file.name.endsWith('.md') || file.name.endsWith('.markdown')
-    )
-    
-    if (droppedFiles.length > 0) {
-      onFileUpload(droppedFiles)
-    }
-  }
 
   const filteredFiles = Array.from(files.values());
 
@@ -63,32 +26,22 @@ function Sidebar({
           </h1>
           <p className="text-xs text-gray-600 ml-12">Professional documentation viewer</p>
         </div>
-        <div className="space-y-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".md,.markdown"
-            multiple
-            style={{ display: 'none' }}
-            onChange={handleFileInputChange}
-          />
-          <button
-            className="w-full px-4 py-2.5 bg-indigo-500 text-white rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-indigo-600 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
-            onClick={handleUploadClick}
-            title="Upload markdown files"
-          >
-            <IoCloudUpload className="w-5 h-5" />
-            Upload Files
-          </button>
-          {isFileSystemAccessSupported() && (
+        <div>
+          {isFileSystemAccessSupported() ? (
             <button
-              className="w-full px-4 py-2.5 bg-green-500 text-white rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-green-600 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+              className="w-full px-4 py-2.5 bg-indigo-500 text-white rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-indigo-600 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
               onClick={onOpenFromSystem}
               title="Open file from your computer (direct editing)"
             >
               <IoFolder className="w-5 h-5" />
-              Open from System
+              Open File
             </button>
+          ) : (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-700 text-center">
+                Your browser doesn't support direct file access. Please use Chrome, Edge, or Opera.
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -157,18 +110,13 @@ function Sidebar({
             </ul>
           </div>
         ) : (
-          <div
-            className="p-8 text-center text-gray-500 border-2 border-dashed border-gray-300 rounded-lg mx-2 my-4 transition-all duration-200 flex flex-col items-center gap-3 hover:border-indigo-400 hover:bg-gray-50"
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
+          <div className="p-8 text-center text-gray-500 border-2 border-dashed border-gray-300 rounded-lg mx-2 my-4 flex flex-col items-center gap-3">
             <div className="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center">
               <IoFolderOpen className="w-8 h-8 text-gray-400" />
             </div>
             <div>
-              <p className="font-medium text-gray-700 mb-1">No files uploaded</p>
-              <p className="text-xs text-gray-500">Drag & drop .md files here</p>
+              <p className="font-medium text-gray-700 mb-1">No files opened</p>
+              <p className="text-xs text-gray-500">Click "Open File" to get started</p>
             </div>
           </div>
         )}
