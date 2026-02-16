@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import toast, { Toaster } from 'react-hot-toast'
 import Sidebar from './components/Sidebar'
 import Content from './components/Content'
 import { loadFromLocalStorage, saveToLocalStorage } from './utils/storage'
@@ -122,7 +123,10 @@ function App() {
 
     // Show notification to user
     if (file) {
-      alert(`File "${file.name}" was updated externally and has been reloaded.`)
+      toast.success(`File "${file.name}" was updated externally and has been reloaded.`, {
+        duration: 4000,
+        icon: '🔄'
+      })
     }
   }
 
@@ -162,7 +166,9 @@ function App() {
   // Open file from system using File System Access API
   const handleOpenFromSystem = async () => {
     if (!isFileSystemAccessSupported()) {
-      alert('Your browser does not support direct file system access. Please use Chrome, Edge, or Opera.')
+      toast.error('Your browser does not support direct file system access. Please use Chrome, Edge, or Opera.', {
+        duration: 5000
+      })
       return
     }
 
@@ -195,9 +201,16 @@ function App() {
       setFileModifiedTimes(newTimes)
 
       setCurrentFileId(fileData.id)
+
+      toast.success(`File "${fileData.name}" opened successfully!`, {
+        duration: 3000,
+        icon: '📂'
+      })
     } catch (err) {
       console.error('Error opening file:', err)
-      alert('Failed to open file: ' + err.message)
+      toast.error(`Failed to open file: ${err.message}`, {
+        duration: 4000
+      })
     }
   }
 
@@ -207,16 +220,23 @@ function App() {
     const file = files.get(fileId)
 
     if (!fileHandle || !file) {
-      alert('Cannot save: File handle not found')
+      toast.error('Cannot save: File handle not found', {
+        duration: 3000
+      })
       return
     }
 
     try {
       await saveToFileHandle(fileHandle, file.content)
-      alert('File saved successfully!')
+      toast.success(`File "${file.name}" saved successfully!`, {
+        duration: 3000,
+        icon: '💾'
+      })
     } catch (err) {
       console.error('Error saving file:', err)
-      alert('Failed to save file: ' + err.message)
+      toast.error(`Failed to save file: ${err.message}`, {
+        duration: 4000
+      })
     }
   }
 
@@ -224,25 +244,66 @@ function App() {
   const currentFileHandle = currentFileId ? fileHandles.get(currentFileId) : null
 
   return (
-    <div className="app-container">
-      <Sidebar
-        files={files}
-        currentFileId={currentFileId}
-        onFileSelect={setCurrentFileId}
-        onFileRemove={handleFileRemove}
-        onFileUpload={handleFileUpload}
-        onOpenFromSystem={handleOpenFromSystem}
-        visible={sidebarVisible}
+    <>
+      <Toaster
+        position="bottom-right"
+        reverseOrder={false}
+        toastOptions={{
+          // Default options
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#374151',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            fontSize: '14px',
+            fontWeight: '500'
+          },
+          // Success toast style
+          success: {
+            style: {
+              background: '#10b981',
+              color: '#fff'
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#10b981'
+            }
+          },
+          // Error toast style
+          error: {
+            style: {
+              background: '#ef4444',
+              color: '#fff'
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#ef4444'
+            }
+          }
+        }}
       />
-      <Content
-        file={currentFile}
-        fileHandle={currentFileHandle}
-        onFileUpdate={handleFileUpdate}
-        onSaveToSystem={handleSaveToSystem}
-        onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
-        sidebarVisible={sidebarVisible}
-      />
-    </div>
+      <div className="app-container">
+        <Sidebar
+          files={files}
+          currentFileId={currentFileId}
+          onFileSelect={setCurrentFileId}
+          onFileRemove={handleFileRemove}
+          onFileUpload={handleFileUpload}
+          onOpenFromSystem={handleOpenFromSystem}
+          visible={sidebarVisible}
+        />
+        <Content
+          file={currentFile}
+          fileHandle={currentFileHandle}
+          onFileUpdate={handleFileUpdate}
+          onSaveToSystem={handleSaveToSystem}
+          onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
+          sidebarVisible={sidebarVisible}
+        />
+      </div>
+    </>
   )
 }
 
