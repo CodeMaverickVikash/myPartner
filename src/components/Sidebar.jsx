@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { IoBook, IoCloudUpload, IoSearch, IoDocument, IoClose, IoFolderOpen, IoFolder } from 'react-icons/io5'
+import { IoBook, IoCloudUpload, IoSearch, IoDocument, IoClose, IoFolderOpen, IoFolder, IoLink } from 'react-icons/io5'
 import { extractHeadings } from '../utils/markdown'
 import { isFileSystemAccessSupported } from '../utils/fileSystem'
 
@@ -117,9 +117,19 @@ function Sidebar({
                         }`}>
                           <IoDocument className="w-4 h-4" />
                         </div>
-                        <span className={`text-sm font-medium ${
-                          currentFileId === file.id ? 'text-indigo-700' : 'text-gray-700'
-                        }`}>{file.name}</span>
+                        <div className="flex flex-col gap-0.5 flex-1 overflow-hidden">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-medium truncate ${
+                              currentFileId === file.id ? 'text-indigo-700' : 'text-gray-700'
+                            }`}>{file.name}</span>
+                            {file.isSystemFile && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded shrink-0" title="Linked to system file">
+                                <IoLink className="w-3 h-3" />
+                                System
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </span>
                       <button
                         className="p-1.5 hover:bg-red-100 text-red-600 rounded-md transition-all duration-200 shrink-0 cursor-pointer"

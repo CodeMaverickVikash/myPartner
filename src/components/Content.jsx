@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { IoMenu, IoCreate, IoDownload, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle } from 'react-icons/io5'
+import { IoMenu, IoCreate, IoDownload, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink } from 'react-icons/io5'
 import MarkdownViewer from './MarkdownViewer'
 import MarkdownEditor from './MarkdownEditor'
 import WelcomeScreen from './WelcomeScreen'
@@ -73,6 +73,12 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
                 <IoDocument className="w-4 h-4 text-white" />
               </div>
               <span>{file.name}</span>
+              {file.isSystemFile && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-md" title="Linked to system file - changes save directly">
+                  <IoLink className="w-3.5 h-3.5" />
+                  System File
+                </span>
+              )}
             </div>
             <div className="flex gap-2 flex-wrap">
               {!isEditMode ? (
