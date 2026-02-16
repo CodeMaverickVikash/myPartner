@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Content from './components/Content'
 import { loadFromLocalStorage, saveToLocalStorage } from './utils/storage'
+import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported } from './utils/fileSystem'
 import './App.css'
 
 function App() {
   const [files, setFiles] = useState(new Map())
   const [currentFileId, setCurrentFileId] = useState(null)
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [fileHandles, setFileHandles] = useState(new Map()) // Store file handles for direct saving
 
   // Load files from localStorage on mount
   useEffect(() => {
@@ -82,7 +84,64 @@ function App() {
     }
   }
 
+  // Open file from system using File System Access API
+  const handleOpenFromSystem = async () => {
+    if (!isFileSystemAccessSupported()) {
+      alert('Your browser does not support direct file system access. Please use Chrome, Edge, or Opera.')
+      return
+    }
+
+    try {
+      const result = await openFileFromSystem()
+      if (!result) return // User cancelled
+
+      const { fileHandle, content, name } = result
+
+      const fileData = {
+        id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        name: name.replace('.md', '').replace('.markdown', ''),
+        content,
+        uploadedAt: new Date().toISOString(),
+        isSystemFile: true // Mark as system file
+      }
+
+      const newFiles = new Map(files)
+      newFiles.set(fileData.id, fileData)
+      setFiles(newFiles)
+
+      // Store file handle
+      const newHandles = new Map(fileHandles)
+      newHandles.set(fileData.id, fileHandle)
+      setFileHandles(newHandles)
+
+      setCurrentFileId(fileData.id)
+    } catch (err) {
+      console.error('Error opening file:', err)
+      alert('Failed to open file: ' + err.message)
+    }
+  }
+
+  // Save directly to system file
+  const handleSaveToSystem = async (fileId) => {
+    const fileHandle = fileHandles.get(fileId)
+    const file = files.get(fileId)
+
+    if (!fileHandle || !file) {
+      alert('Cannot save: File handle not found')
+      return
+    }
+
+    try {
+      await saveToFileHandle(fileHandle, file.content)
+      alert('File saved successfully!')
+    } catch (err) {
+      console.error('Error saving file:', err)
+      alert('Failed to save file: ' + err.message)
+    }
+  }
+
   const currentFile = currentFileId ? files.get(currentFileId) : null
+  const currentFileHandle = currentFileId ? fileHandles.get(currentFileId) : null
 
   return (
     <div className="app-container">
@@ -92,11 +151,14 @@ function App() {
         onFileSelect={setCurrentFileId}
         onFileRemove={handleFileRemove}
         onFileUpload={handleFileUpload}
+        onOpenFromSystem={handleOpenFromSystem}
         visible={sidebarVisible}
       />
       <Content
         file={currentFile}
+        fileHandle={currentFileHandle}
         onFileUpdate={handleFileUpdate}
+        onSaveToSystem={handleSaveToSystem}
         onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
         sidebarVisible={sidebarVisible}
       />

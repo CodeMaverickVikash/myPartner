@@ -1,6 +1,7 @@
 import { useRef } from 'react'
-import { IoBook, IoCloudUpload, IoSearch, IoDocument, IoClose, IoFolderOpen } from 'react-icons/io5'
+import { IoBook, IoCloudUpload, IoSearch, IoDocument, IoClose, IoFolderOpen, IoFolder } from 'react-icons/io5'
 import { extractHeadings } from '../utils/markdown'
+import { isFileSystemAccessSupported } from '../utils/fileSystem'
 
 function Sidebar({
   files,
@@ -8,6 +9,7 @@ function Sidebar({
   onFileSelect,
   onFileRemove,
   onFileUpload,
+  onOpenFromSystem,
   visible
 }) {
   const fileInputRef = useRef(null)
@@ -61,7 +63,7 @@ function Sidebar({
           </h1>
           <p className="text-xs text-gray-600 ml-12">Professional documentation viewer</p>
         </div>
-        <div>
+        <div className="space-y-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -78,6 +80,16 @@ function Sidebar({
             <IoCloudUpload className="w-5 h-5" />
             Upload Files
           </button>
+          {isFileSystemAccessSupported() && (
+            <button
+              className="w-full px-4 py-2.5 bg-green-500 text-white rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-green-600 active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+              onClick={onOpenFromSystem}
+              title="Open file from your computer (direct editing)"
+            >
+              <IoFolder className="w-5 h-5" />
+              Open from System
+            </button>
+          )}
         </div>
       </div>
 

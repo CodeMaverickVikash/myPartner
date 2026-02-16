@@ -1,11 +1,11 @@
 import { useState, useRef } from 'react'
-import { IoMenu, IoCreate, IoDownload, IoSave, IoClose, IoChevronUp, IoDocument } from 'react-icons/io5'
+import { IoMenu, IoCreate, IoDownload, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle } from 'react-icons/io5'
 import MarkdownViewer from './MarkdownViewer'
 import MarkdownEditor from './MarkdownEditor'
 import WelcomeScreen from './WelcomeScreen'
 import { downloadMarkdown } from '../utils/markdown'
 
-function Content({ file, onFileUpdate, onToggleSidebar, sidebarVisible }) {
+function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible }) {
   const [isEditMode, setIsEditMode] = useState(false)
   const [editContent, setEditContent] = useState('')
   const markdownViewerRef = useRef(null);
@@ -17,6 +17,14 @@ function Content({ file, onFileUpdate, onToggleSidebar, sidebarVisible }) {
 
   const handleSave = () => {
     onFileUpdate(file.id, editContent)
+    setIsEditMode(false)
+  }
+
+  const handleSaveToSystem = async () => {
+    // First update the file in state
+    onFileUpdate(file.id, editContent)
+    // Then save to system
+    await onSaveToSystem(file.id)
     setIsEditMode(false)
   }
 
@@ -88,14 +96,25 @@ function Content({ file, onFileUpdate, onToggleSidebar, sidebarVisible }) {
                 </>
               ) : (
                 <>
-                  <button
-                    className="px-4 py-2 bg-green-500 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-green-600 active:scale-95 flex items-center gap-2 shadow-sm"
-                    onClick={handleSave}
-                    title="Save changes"
-                  >
-                    <IoSave className="w-4 h-4" />
-                    Save
-                  </button>
+                  {fileHandle ? (
+                    <button
+                      className="px-4 py-2 bg-green-500 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-green-600 active:scale-95 flex items-center gap-2 shadow-sm"
+                      onClick={handleSaveToSystem}
+                      title="Save directly to system file"
+                    >
+                      <IoCheckmarkCircle className="w-4 h-4" />
+                      Save to System
+                    </button>
+                  ) : (
+                    <button
+                      className="px-4 py-2 bg-green-500 text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-green-600 active:scale-95 flex items-center gap-2 shadow-sm"
+                      onClick={handleSave}
+                      title="Save changes"
+                    >
+                      <IoSave className="w-4 h-4" />
+                      Save
+                    </button>
+                  )}
                   <button
                     className="px-4 py-2 bg-gray-200 text-gray-700 border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-gray-300 active:scale-95 flex items-center gap-2"
                     onClick={handleCancel}
