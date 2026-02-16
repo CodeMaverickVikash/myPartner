@@ -7,9 +7,14 @@ import WelcomeScreen from './WelcomeScreen'
 function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible }) {
   const [isEditMode, setIsEditMode] = useState(false)
   const [editContent, setEditContent] = useState('')
-  const markdownViewerRef = useRef(null);
+  const [scrollPosition, setScrollPosition] = useState(0)
+  const markdownViewerRef = useRef(null)
 
   const handleEdit = () => {
+    // Capture current scroll position from viewer
+    if (markdownViewerRef.current) {
+      setScrollPosition(markdownViewerRef.current.scrollTop)
+    }
     setEditContent(file.content)
     setIsEditMode(true)
   }
@@ -17,6 +22,12 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
   const handleSave = () => {
     onFileUpdate(file.id, editContent)
     setIsEditMode(false)
+    // Restore scroll position after state update
+    setTimeout(() => {
+      if (markdownViewerRef.current) {
+        markdownViewerRef.current.scrollTop = scrollPosition
+      }
+    }, 0)
   }
 
   const handleSaveToSystem = async () => {
@@ -25,11 +36,23 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
     // Then save to system
     await onSaveToSystem(file.id)
     setIsEditMode(false)
+    // Restore scroll position after state update
+    setTimeout(() => {
+      if (markdownViewerRef.current) {
+        markdownViewerRef.current.scrollTop = scrollPosition
+      }
+    }, 0)
   }
 
   const handleCancel = () => {
     setIsEditMode(false)
     setEditContent('')
+    // Restore scroll position after state update
+    setTimeout(() => {
+      if (markdownViewerRef.current) {
+        markdownViewerRef.current.scrollTop = scrollPosition
+      }
+    }, 0)
   }
 
   const scrollToTop = () => {
@@ -136,6 +159,8 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
             <MarkdownEditor
               content={editContent}
               onChange={setEditContent}
+              initialScrollPosition={scrollPosition}
+              onScrollChange={setScrollPosition}
             />
           ) : (
             <MarkdownViewer content={file.content} markdownViewerRef={markdownViewerRef} />

@@ -8,12 +8,26 @@ import {
 } from 'react-icons/io5'
 import { parseMarkdown } from '../utils/markdown'
 
-function MarkdownEditor({ content, onChange }) {
+function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScrollChange }) {
   const textareaRef = useRef(null)
   const previewRef = useRef(null)
   const containerRef = useRef(null)
   const [editorWidth, setEditorWidth] = useState(50) // percentage
   const [isResizing, setIsResizing] = useState(false)
+  const scrollRestored = useRef(false)
+
+  // Restore scroll position when component mounts or content changes
+  useEffect(() => {
+    if (textareaRef.current && initialScrollPosition > 0 && !scrollRestored.current) {
+      textareaRef.current.scrollTop = initialScrollPosition
+      scrollRestored.current = true
+    }
+  }, [initialScrollPosition])
+
+  // Reset scroll restored flag when content changes significantly
+  useEffect(() => {
+    scrollRestored.current = false
+  }, [content])
 
   const insertMarkdown = (before, after = '', placeholder = '') => {
     const textarea = textareaRef.current
@@ -48,6 +62,11 @@ function MarkdownEditor({ content, onChange }) {
 
     const scrollPercentage = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight)
     preview.scrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight)
+
+    // Save scroll position
+    if (onScrollChange) {
+      onScrollChange(textarea.scrollTop)
+    }
   }
 
   // Resize handlers
