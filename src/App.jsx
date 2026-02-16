@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import Content from './components/Content'
 import { loadFromLocalStorage, saveToLocalStorage } from './utils/storage'
 import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported, watchFile } from './utils/fileSystem'
+import { saveFileHandle, getFileHandle, getAllFileHandles, removeFileHandle } from './utils/indexedDB'
 import './App.css'
 
 function App() {
@@ -14,16 +15,37 @@ function App() {
   const [fileModifiedTimes, setFileModifiedTimes] = useState(new Map()) // Track last modified times
   const watchersRef = useRef(new Map()) // Store file watchers
 
-  // Load files from localStorage on mount
+  // Load files from localStorage and file handles from IndexedDB on mount
   useEffect(() => {
-    const savedFiles = loadFromLocalStorage('uploadedFiles')
-    if (savedFiles && savedFiles.length > 0) {
-      const filesMap = new Map()
-      savedFiles.forEach(file => {
-        filesMap.set(file.id, file)
-      })
-      setFiles(filesMap)
+    const loadData = async () => {
+      // Load files from localStorage
+      const savedFiles = loadFromLocalStorage('uploadedFiles')
+      if (savedFiles && savedFiles.length > 0) {
+        const filesMap = new Map()
+        savedFiles.forEach(file => {
+          filesMap.set(file.id, file)
+        })
+        setFiles(filesMap)
+
+        // Load file handles from IndexedDB
+        const handles = await getAllFileHandles()
+        setFileHandles(handles)
+
+        // Restore modified times for system files
+        const modifiedTimes = new Map()
+        for (const [fileId, handle] of handles.entries()) {
+          try {
+            const file = await handle.getFile()
+            modifiedTimes.set(fileId, file.lastModified)
+          } catch (error) {
+            console.error(`Error accessing file handle for ${fileId}:`, error)
+          }
+        }
+        setFileModifiedTimes(modifiedTimes)
+      }
     }
+
+    loadData()
   }, [])
 
   // Save files to localStorage whenever they change
@@ -36,7 +58,7 @@ function App() {
 
 
 
-  const handleFileRemove = (fileId) => {
+  const handleFileRemove = async (fileId) => {
     if (confirm('Are you sure you want to remove this file?')) {
       // Stop watching the file
       const watcher = watchersRef.current.get(fileId)
@@ -49,10 +71,13 @@ function App() {
       newFiles.delete(fileId)
       setFiles(newFiles)
 
-      // Remove file handle
+      // Remove file handle from memory
       const newHandles = new Map(fileHandles)
       newHandles.delete(fileId)
       setFileHandles(newHandles)
+
+      // Remove file handle from IndexedDB
+      await removeFileHandle(fileId)
 
       // Remove modified time
       const newTimes = new Map(fileModifiedTimes)
@@ -167,10 +192,13 @@ function App() {
       newFiles.set(fileData.id, fileData)
       setFiles(newFiles)
 
-      // Store file handle
+      // Store file handle in memory
       const newHandles = new Map(fileHandles)
       newHandles.set(fileData.id, fileHandle)
       setFileHandles(newHandles)
+
+      // Store file handle in IndexedDB for persistence
+      await saveFileHandle(fileData.id, fileHandle)
 
       // Store initial lastModified time
       const newTimes = new Map(fileModifiedTimes)
