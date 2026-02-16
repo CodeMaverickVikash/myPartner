@@ -101,3 +101,52 @@ export const saveAsNewFile = async (content, suggestedName = 'document.md') => {
   }
 }
 
+/**
+ * Check if file has been modified externally
+ * Returns: { modified: boolean, newContent: string, lastModified: number }
+ */
+export const checkFileModified = async (fileHandle, lastModified) => {
+  try {
+    const file = await fileHandle.getFile()
+    const fileLastModified = file.lastModified
+
+    if (fileLastModified > lastModified) {
+      const newContent = await file.text()
+      return {
+        modified: true,
+        newContent,
+        lastModified: fileLastModified
+      }
+    }
+
+    return {
+      modified: false,
+      newContent: null,
+      lastModified
+    }
+  } catch (err) {
+    console.error('Error checking file modification:', err)
+    return {
+      modified: false,
+      newContent: null,
+      lastModified
+    }
+  }
+}
+
+/**
+ * Start watching a file for external changes
+ * Returns a cleanup function to stop watching
+ */
+export const watchFile = (fileHandle, lastModified, onFileChanged, interval = 2000) => {
+  const intervalId = setInterval(async () => {
+    const result = await checkFileModified(fileHandle, lastModified)
+    if (result.modified) {
+      onFileChanged(result.newContent, result.lastModified)
+    }
+  }, interval)
+
+  // Return cleanup function
+  return () => clearInterval(intervalId)
+}
+
