@@ -3,7 +3,7 @@ import { IoCloudUpload, IoCreate, IoDownload, IoBook, IoDocument, IoCode, IoSpar
 function WelcomeScreen() {
   return (
     <div className="flex-1 overflow-y-auto bg-gray-50 relative">
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Hero Section */}
         <div className="text-center mb-13">
           <h1 className="text-1xl md:text-3xl mb-4 text-gray-900 font-bold tracking-tight">

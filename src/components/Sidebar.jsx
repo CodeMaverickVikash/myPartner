@@ -8,9 +8,7 @@ function Sidebar({
   onFileSelect,
   onFileRemove,
   onFileUpload,
-  visible,
-  searchQuery,
-  onSearchChange
+  visible
 }) {
   const fileInputRef = useRef(null)
 
@@ -48,12 +46,7 @@ function Sidebar({
     }
   }
 
-  const filesArray = Array.from(files.values())
-  const filteredFiles = searchQuery
-    ? filesArray.filter(file => 
-        file.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : filesArray
+  const filteredFiles = Array.from(files.values());
 
   return (
     <aside className={`${visible ? 'w-[320px]' : 'w-0 min-w-0 overflow-hidden'} bg-white flex flex-col transition-all duration-300 border-r border-gray-200`}>
@@ -88,20 +81,6 @@ function Sidebar({
         </div>
       </div>
 
-      {/* Search */}
-      <div className="p-4 flex-shrink-0">
-        <div className="relative">
-          <IoSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm outline-none transition-all duration-200 bg-white text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            placeholder="Search files..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
-      </div>
-
       {/* File List */}
       <nav className="flex-1 overflow-y-auto py-2 px-4">
         {filteredFiles.length > 0 ? (
@@ -131,7 +110,7 @@ function Sidebar({
                         }`}>{file.name}</span>
                       </span>
                       <button
-                        className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 text-red-600 rounded-md transition-all duration-200 shrink-0 cursor-pointer"
+                        className="p-1.5 hover:bg-red-100 text-red-600 rounded-md transition-all duration-200 shrink-0 cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation()
                           onFileRemove(file.id)

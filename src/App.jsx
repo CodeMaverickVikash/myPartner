@@ -8,7 +8,6 @@ function App() {
   const [files, setFiles] = useState(new Map())
   const [currentFileId, setCurrentFileId] = useState(null)
   const [sidebarVisible, setSidebarVisible] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
 
   // Load files from localStorage on mount
   useEffect(() => {
@@ -94,8 +93,6 @@ function App() {
         onFileRemove={handleFileRemove}
         onFileUpload={handleFileUpload}
         visible={sidebarVisible}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
       />
       <Content
         file={currentFile}
