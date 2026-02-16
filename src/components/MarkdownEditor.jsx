@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import {
   IoText,
   IoCode,
@@ -56,7 +56,7 @@ function MarkdownEditor({ content, onChange }) {
   }
 
   const handleMouseMove = (e) => {
-    if (!isResizing || !containerRef.current) return
+    if (!containerRef.current) return
 
     const container = containerRef.current
     const containerRect = container.getBoundingClientRect()
@@ -72,14 +72,18 @@ function MarkdownEditor({ content, onChange }) {
     setIsResizing(false)
   }
 
-  // Add/remove mouse event listeners
-  if (isResizing) {
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-  } else {
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-  }
+  // Add/remove mouse event listeners using useEffect
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
 
   const toolbarButtons = [
     { icon: IoText, label: 'Bold', action: () => insertMarkdown('**', '**', 'bold text') },
