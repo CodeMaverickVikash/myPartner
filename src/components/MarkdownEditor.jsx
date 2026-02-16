@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
   IoText,
   IoCode,
@@ -11,6 +11,9 @@ import { parseMarkdown } from '../utils/markdown'
 function MarkdownEditor({ content, onChange }) {
   const textareaRef = useRef(null)
   const previewRef = useRef(null)
+  const containerRef = useRef(null)
+  const [editorWidth, setEditorWidth] = useState(50) // percentage
+  const [isResizing, setIsResizing] = useState(false)
 
   const insertMarkdown = (before, after = '', placeholder = '') => {
     const textarea = textareaRef.current
@@ -47,6 +50,37 @@ function MarkdownEditor({ content, onChange }) {
     preview.scrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight)
   }
 
+  // Resize handlers
+  const handleMouseDown = () => {
+    setIsResizing(true)
+  }
+
+  const handleMouseMove = (e) => {
+    if (!isResizing || !containerRef.current) return
+
+    const container = containerRef.current
+    const containerRect = container.getBoundingClientRect()
+    const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
+
+    // Limit between 20% and 80%
+    if (newWidth >= 20 && newWidth <= 80) {
+      setEditorWidth(newWidth)
+    }
+  }
+
+  const handleMouseUp = () => {
+    setIsResizing(false)
+  }
+
+  // Add/remove mouse event listeners
+  if (isResizing) {
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  } else {
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+
   const toolbarButtons = [
     { icon: IoText, label: 'Bold', action: () => insertMarkdown('**', '**', 'bold text') },
     { icon: IoText, label: 'Italic', action: () => insertMarkdown('*', '*', 'italic text') },
@@ -76,9 +110,12 @@ function MarkdownEditor({ content, onChange }) {
       </div>
 
       {/* Split View: Editor + Preview */}
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         {/* Editor */}
-        <div className="flex-1 flex flex-col border-r border-gray-200">
+        <div
+          className="flex flex-col border-r border-gray-200"
+          style={{ width: `${editorWidth}%` }}
+        >
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-600">
             EDIT
           </div>
@@ -93,8 +130,16 @@ function MarkdownEditor({ content, onChange }) {
           />
         </div>
 
+        {/* Resizer */}
+        <div
+          className="w-1 bg-gray-200 hover:bg-indigo-400 cursor-col-resize shrink-0 transition-colors duration-150 relative group"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
+
         {/* Preview */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden">
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-600">
             PREVIEW
           </div>
