@@ -38,3 +38,6 @@ index-vanilla.html
 
 # Vercel
 .vercel
+
+package-lock.json
+yarn.lock
