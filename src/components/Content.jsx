@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { IoMenu, IoCreate, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink } from 'react-icons/io5'
+import { IoMenu, IoCreate, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink, IoFolderOpen } from 'react-icons/io5'
 import MarkdownViewer from './MarkdownViewer'
 import MarkdownEditor from './MarkdownEditor'
 import WelcomeScreen from './WelcomeScreen'
@@ -61,17 +61,32 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
               <IoMenu className="w-5 h-5" />
             </button>
 
-            <div className="text-lg font-semibold text-gray-900 flex items-center gap-2.5 ml-12">
-              <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+            <div className="flex items-center gap-2.5 ml-12">
+              <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shrink-0">
                 <IoDocument className="w-4 h-4 text-white" />
               </div>
-              <span>{file.name}</span>
-              {file.isSystemFile && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-md" title="Linked to system file - changes save directly">
-                  <IoLink className="w-3.5 h-3.5" />
-                  System File
-                </span>
-              )}
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-semibold text-gray-900">{file.name}</span>
+                  {file.isSystemFile && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-md" title="Linked to system file - changes save directly">
+                      <IoLink className="w-3.5 h-3.5" />
+                      System File
+                    </span>
+                  )}
+                </div>
+                {file.filePath && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <IoFolderOpen className="w-3.5 h-3.5" />
+                    <span
+                      className="truncate max-w-md"
+                      title={`File: ${file.filePath}\n\nNote: Full absolute path is not available due to browser security restrictions. This shows the filename only.`}
+                    >
+                      {file.filePath}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex gap-2 flex-wrap">
               {!isEditMode ? (

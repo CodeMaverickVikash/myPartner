@@ -8,8 +8,39 @@ export const isFileSystemAccessSupported = () => {
 }
 
 /**
+ * Get file path from file handle and file object
+ * Note: Full absolute path is not available for security reasons in browsers
+ * We can only show the file name, but we'll try to get as much info as possible
+ */
+export const getFilePath = async (fileHandle, file) => {
+  try {
+    let path = ''
+
+    // Try to get webkitRelativePath (for directory uploads)
+    if (file && file.webkitRelativePath) {
+      path = file.webkitRelativePath
+    }
+    // Try to get path from File System Access API (limited info)
+    else if (fileHandle && fileHandle.name) {
+      path = fileHandle.name
+    }
+    // Fallback to file name
+    else if (file && file.name) {
+      path = file.name
+    }
+    else {
+      path = 'Unknown location'
+    }
+
+    return path
+  } catch (err) {
+    return 'Unknown location'
+  }
+}
+
+/**
  * Open a file from the user's system
- * Returns: { fileHandle, file, content }
+ * Returns: { fileHandle, file, content, name, path }
  */
 export const openFileFromSystem = async () => {
   try {
@@ -28,12 +59,14 @@ export const openFileFromSystem = async () => {
 
     const file = await fileHandle.getFile()
     const content = await file.text()
+    const path = await getFilePath(fileHandle, file)
 
     return {
       fileHandle,
       file,
       content,
-      name: file.name
+      name: file.name,
+      path
     }
   } catch (err) {
     if (err.name === 'AbortError') {

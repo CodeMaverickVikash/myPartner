@@ -178,14 +178,15 @@ function App() {
       const result = await openFileFromSystem()
       if (!result) return // User cancelled
 
-      const { fileHandle, file, content, name } = result
+      const { fileHandle, file, content, name, path } = result
 
       const fileData = {
         id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         name: name.replace('.md', '').replace('.markdown', ''),
         content,
         uploadedAt: new Date().toISOString(),
-        isSystemFile: true // Mark as system file
+        isSystemFile: true, // Mark as system file
+        filePath: path // Store file path
       }
 
       const newFiles = new Map(files)
