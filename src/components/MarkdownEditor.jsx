@@ -16,7 +16,7 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
   const [isResizing, setIsResizing] = useState(false)
   const scrollRestored = useRef(false)
 
-  // Restore scroll position when component mounts or content changes
+  // Restore scroll position when component mounts
   useEffect(() => {
     if (textareaRef.current && initialScrollPosition > 0 && !scrollRestored.current) {
       textareaRef.current.scrollTop = initialScrollPosition
@@ -24,14 +24,12 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     }
   }, [initialScrollPosition])
 
-  // Reset scroll restored flag when content changes significantly
-  useEffect(() => {
-    scrollRestored.current = false
-  }, [content])
-
   const insertMarkdown = (before, after = '', placeholder = '') => {
     const textarea = textareaRef.current
     if (!textarea) return
+
+    // Save current scroll position
+    const currentScrollTop = textarea.scrollTop
 
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
@@ -45,11 +43,13 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
 
     onChange(newText)
 
-    // Set cursor position after insertion
+    // Set cursor position after insertion and restore scroll position
     setTimeout(() => {
       const newCursorPos = start + before.length + textToInsert.length
       textarea.focus()
       textarea.setSelectionRange(newCursorPos, newCursorPos)
+      // Restore scroll position
+      textarea.scrollTop = currentScrollTop
     }, 0)
   }
 
