@@ -1,5 +1,25 @@
 ﻿@import "tailwindcss";
 
+/* Color Hunt Palette: https://colorhunt.co/palette/a82323feffd3bcd9a26d9e51 */
+@theme {
+  --color-crimson: #A82323;
+  --color-cream: #FEFFD3;
+  --color-sage: #BCD9A2;
+  --color-forest: #6D9E51;
+
+  /* Primary shades */
+  --color-primary-50: #FDEAEA;
+  --color-primary-100: #FBD5D5;
+  --color-primary-200: #F7ABAB;
+  --color-primary-300: #F38181;
+  --color-primary-400: #EF5757;
+  --color-primary-500: #A82323;
+  --color-primary-600: #8A1D1D;
+  --color-primary-700: #6C1717;
+  --color-primary-800: #4E1111;
+  --color-primary-900: #300B0B;
+}
+
 /* Import highlight.js theme */
 @import 'highlight.js/styles/github-dark.css';
 

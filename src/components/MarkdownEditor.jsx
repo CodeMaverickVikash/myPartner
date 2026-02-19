@@ -273,7 +273,7 @@ Content goes here
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
+      <div className="flex items-center px-4 py-2 border-b border-sage/30 bg-gradient-to-r from-cream/30 to-white shrink-0">
         <div className="flex items-center gap-1">
           {toolbarButtons.map((button, index) => (
             <button
@@ -283,12 +283,12 @@ Content goes here
               className={`p-2 rounded transition-colors duration-150 ${
                 button.disabled
                   ? 'opacity-40 cursor-not-allowed'
-                  : 'hover:bg-gray-200'
+                  : 'hover:bg-sage/30'
               }`}
               title={button.label}
               type="button"
             >
-              <button.icon className="w-4 h-4 text-gray-700" />
+              <button.icon className="w-4 h-4 text-forest" />
             </button>
           ))}
         </div>
@@ -297,15 +297,15 @@ Content goes here
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-2 hover:bg-gray-200 rounded transition-colors duration-150"
+            className="p-2 hover:bg-sage/30 rounded transition-colors duration-150"
             title="More formatting options"
             type="button"
           >
-            <IoEllipsisVertical className="w-4 h-4 text-gray-700" />
+            <IoEllipsisVertical className="w-4 h-4 text-forest" />
           </button>
 
           {isMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
+            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-sage rounded-lg shadow-lg z-50 py-1">
               {menuItems.map((item, index) => (
                 <button
                   key={index}
@@ -313,10 +313,10 @@ Content goes here
                     item.action()
                     setIsMenuOpen(false)
                   }}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3 transition-colors duration-150"
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-sage/20 flex items-center gap-3 transition-colors duration-150"
                   type="button"
                 >
-                  <item.icon className="w-4 h-4 text-gray-600" />
+                  <item.icon className="w-4 h-4 text-forest" />
                   <span>{item.label}</span>
                 </button>
               ))}
@@ -329,10 +329,10 @@ Content goes here
       <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         {/* Editor */}
         <div
-          className="flex flex-col border-r border-gray-200"
+          className="flex flex-col border-r border-sage/30"
           style={{ width: `${editorWidth}%` }}
         >
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-600">
+          <div className="px-4 py-2 bg-cream/40 border-b border-sage/30 text-xs font-medium text-forest">
             EDIT
           </div>
           <textarea
@@ -360,7 +360,7 @@ Content goes here
 
         {/* Resizer */}
         <div
-          className="w-1 bg-gray-200 hover:bg-indigo-400 cursor-col-resize shrink-0 transition-colors duration-150 relative group"
+          className="w-1 bg-sage/40 hover:bg-forest cursor-col-resize shrink-0 transition-colors duration-150 relative group"
           onMouseDown={handleMouseDown}
         >
           <div className="absolute inset-y-0 -left-1 -right-1" />
@@ -368,7 +368,7 @@ Content goes here
 
         {/* Preview */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-600">
+          <div className="px-4 py-2 bg-cream/40 border-b border-sage/30 text-xs font-medium text-forest">
             PREVIEW
           </div>
           <div
