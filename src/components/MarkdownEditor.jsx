@@ -4,7 +4,9 @@ import {
   IoCode,
   IoList,
   IoLink,
-  IoImage
+  IoImage,
+  IoArrowUndo,
+  IoArrowRedo
 } from 'react-icons/io5'
 import { parseMarkdown } from '../utils/markdown'
 
@@ -12,9 +14,30 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
   const textareaRef = useRef(null)
   const previewRef = useRef(null)
   const containerRef = useRef(null)
-  const [editorWidth, setEditorWidth] = useState(50) // percentage
+  const [editorWidth, setEditorWidth] = useState(50)
   const [isResizing, setIsResizing] = useState(false)
   const scrollRestored = useRef(false)
+  
+  // Undo/Redo history
+  const [history, setHistory] = useState([content])
+  const [historyIndex, setHistoryIndex] = useState(0)
+  const isUndoRedoAction = useRef(false)
+
+  // Update history when content changes (but not during undo/redo)
+  useEffect(() => {
+    if (!isUndoRedoAction.current && content !== history[historyIndex]) {
+      const newHistory = history.slice(0, historyIndex + 1)
+      newHistory.push(content)
+      // Limit history to 50 entries
+      if (newHistory.length > 50) {
+        newHistory.shift()
+      } else {
+        setHistoryIndex(historyIndex + 1)
+      }
+      setHistory(newHistory)
+    }
+    isUndoRedoAction.current = false
+  }, [content, history, historyIndex])
 
   // Restore scroll position when component mounts
   useEffect(() => {
@@ -25,7 +48,7 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
   }, [initialScrollPosition])
 
   const insertMarkdown = (before, after = '', placeholder = '') => {
-    const textarea = textareaRef.current
+    const textarea = textareaRef.current;
     if (!textarea) return
 
     // Save current scroll position
@@ -33,13 +56,13 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
 
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
-    const selectedText = content.substring(start, end)
-    const textToInsert = selectedText || placeholder
+    const selectedText = textarea.value.substring(start, end)
+    const textToInsert = (selectedText || placeholder).trim();
 
     const newText =
-      content.substring(0, start) +
+      textarea.value.substring(0, start) +
       before + textToInsert + after +
-      content.substring(end)
+      textarea.value.substring(end)
 
     onChange(newText)
 
@@ -104,7 +127,55 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     }
   }, [isResizing])
 
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      isUndoRedoAction.current = true
+      const currentScrollTop = textareaRef.current?.scrollTop || 0
+      const currentSelectionStart = textareaRef.current?.selectionStart || 0
+      const currentSelectionEnd = textareaRef.current?.selectionEnd || 0
+      const newIndex = historyIndex - 1
+      setHistoryIndex(newIndex)
+      onChange(history[newIndex])
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          textareaRef.current.scrollTop = currentScrollTop
+          // Try to restore selection if still valid
+          const maxLength = textareaRef.current.value.length
+          const safeStart = Math.min(currentSelectionStart, maxLength)
+          const safeEnd = Math.min(currentSelectionEnd, maxLength)
+          textareaRef.current.setSelectionRange(safeStart, safeEnd)
+        }
+      }, 10)
+    }
+  }
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      isUndoRedoAction.current = true
+      const currentScrollTop = textareaRef.current?.scrollTop || 0
+      const currentSelectionStart = textareaRef.current?.selectionStart || 0
+      const currentSelectionEnd = textareaRef.current?.selectionEnd || 0
+      const newIndex = historyIndex + 1
+      setHistoryIndex(newIndex)
+      onChange(history[newIndex])
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          textareaRef.current.scrollTop = currentScrollTop
+          // Try to restore selection if still valid
+          const maxLength = textareaRef.current.value.length
+          const safeStart = Math.min(currentSelectionStart, maxLength)
+          const safeEnd = Math.min(currentSelectionEnd, maxLength)
+          textareaRef.current.setSelectionRange(safeStart, safeEnd)
+        }
+      }, 10)
+    }
+  }
+
   const toolbarButtons = [
+    { icon: IoArrowUndo, label: 'Undo (Ctrl+Z)', action: handleUndo, disabled: historyIndex <= 0 },
+    { icon: IoArrowRedo, label: 'Redo (Ctrl+Y)', action: handleRedo, disabled: historyIndex >= history.length - 1 },
     { icon: IoText, label: 'Bold', action: () => insertMarkdown('**', '**', 'bold text') },
     { icon: IoText, label: 'Italic', action: () => insertMarkdown('*', '*', 'italic text') },
     { icon: IoText, label: 'Heading', action: () => insertMarkdown('## ', '', 'Heading') },
@@ -123,7 +194,12 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
           <button
             key={index}
             onClick={button.action}
-            className="p-2 hover:bg-gray-200 rounded transition-colors duration-150"
+            disabled={button.disabled}
+            className={`p-2 rounded transition-colors duration-150 ${
+              button.disabled
+                ? 'opacity-40 cursor-not-allowed'
+                : 'hover:bg-gray-200'
+            }`}
             title={button.label}
             type="button"
           >
@@ -148,6 +224,18 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
             value={content}
             onChange={(e) => onChange(e.target.value)}
             onScroll={handleEditorScroll}
+            onKeyDown={(e) => {
+              // Ctrl+Z for Undo
+              if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault()
+                handleUndo()
+              }
+              // Ctrl+Y or Ctrl+Shift+Z for Redo
+              if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
+                e.preventDefault()
+                handleRedo()
+              }
+            }}
             placeholder="Write your markdown here..."
             spellCheck="false"
           />
