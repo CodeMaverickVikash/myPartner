@@ -6,7 +6,15 @@ import {
   IoLink,
   IoImage,
   IoArrowUndo,
-  IoArrowRedo
+  IoArrowRedo,
+  IoEllipsisVertical,
+  IoCheckboxOutline,
+  IoRemoveOutline,
+  IoGridOutline,
+  IoChatboxOutline,
+  IoTerminalOutline,
+  IoChevronDown,
+  IoChevronUp as IoChevronUpIcon
 } from 'react-icons/io5'
 import { parseMarkdown } from '../utils/markdown'
 
@@ -17,7 +25,9 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
   const [editorWidth, setEditorWidth] = useState(50)
   const [isResizing, setIsResizing] = useState(false)
   const scrollRestored = useRef(false)
-  
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
   // Undo/Redo history
   const [history, setHistory] = useState([content])
   const [historyIndex, setHistoryIndex] = useState(0)
@@ -48,32 +58,78 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
   }, [initialScrollPosition])
 
   const insertMarkdown = (before, after = '', placeholder = '') => {
-    const textarea = textareaRef.current;
+    const textarea = textareaRef.current
     if (!textarea) return
 
-    // Save current scroll position
+    // Save current scroll position and selection BEFORE any changes
     const currentScrollTop = textarea.scrollTop
-
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
-    const selectedText = textarea.value.substring(start, end)
-    const textToInsert = (selectedText || placeholder).trim();
+    const selectedText = content.substring(start, end)
+    const textToInsert = selectedText || placeholder
 
     const newText =
-      textarea.value.substring(0, start) +
+      content.substring(0, start) +
       before + textToInsert + after +
-      textarea.value.substring(end)
+      content.substring(end)
 
+    // Calculate new cursor position
+    const newCursorPos = start + before.length + textToInsert.length
+
+    // Update content
     onChange(newText)
 
-    // Set cursor position after insertion and restore scroll position
+    // Use setTimeout to ensure React has updated the DOM
     setTimeout(() => {
-      const newCursorPos = start + before.length + textToInsert.length
-      textarea.focus()
-      textarea.setSelectionRange(newCursorPos, newCursorPos)
-      // Restore scroll position
-      textarea.scrollTop = currentScrollTop
-    }, 0)
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
+        textareaRef.current.scrollTop = currentScrollTop
+      }
+    }, 10)
+  }
+
+  // Advanced markdown insertions
+  const insertTable = () => {
+    const tableTemplate = `| Header 1 | Header 2 | Header 3 |
+| -------- | -------- | -------- |
+| Cell 1   | Cell 2   | Cell 3   |
+| Cell 4   | Cell 5   | Cell 6   |`
+    insertMarkdown('', '', tableTemplate)
+  }
+
+  const insertTaskList = () => {
+    insertMarkdown('- [ ] ', '', 'Task item')
+  }
+
+  const insertBlockquote = () => {
+    insertMarkdown('> ', '', 'Quote text')
+  }
+
+  const insertCodeBlock = (language = '') => {
+    insertMarkdown(`\`\`\`${language}\n`, '\n\`\`\`', 'code here')
+  }
+
+  const insertHorizontalRule = () => {
+    insertMarkdown('\n---\n', '', '')
+  }
+
+  const insertStrikethrough = () => {
+    insertMarkdown('~~', '~~', 'strikethrough text')
+  }
+
+  const insertFootnote = () => {
+    insertMarkdown('[^1]', '', '')
+  }
+
+  const insertCollapsible = () => {
+    const template = `<details>
+<summary>Click to expand</summary>
+
+Content goes here
+
+</details>`
+    insertMarkdown('', '', template)
   }
 
   // Synchronized scrolling
@@ -126,6 +182,23 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
       document.removeEventListener('mouseup', handleMouseUp)
     }
   }, [isResizing])
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false)
+      }
+    }
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isMenuOpen])
 
   const handleUndo = () => {
     if (historyIndex > 0) {
@@ -186,26 +259,70 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     { icon: IoImage, label: 'Image', action: () => insertMarkdown('![', '](url)', 'alt text') },
   ]
 
+  const menuItems = [
+    { icon: IoGridOutline, label: 'Table', action: insertTable },
+    { icon: IoCheckboxOutline, label: 'Task List', action: insertTaskList },
+    { icon: IoChatboxOutline, label: 'Blockquote', action: insertBlockquote },
+    { icon: IoTerminalOutline, label: 'Code Block', action: () => insertCodeBlock('') },
+    { icon: IoRemoveOutline, label: 'Horizontal Rule', action: insertHorizontalRule },
+    { icon: IoText, label: 'Strikethrough', action: insertStrikethrough },
+    { icon: IoText, label: 'Footnote', action: insertFootnote },
+    { icon: IoChevronDown, label: 'Collapsible Section', action: insertCollapsible },
+  ]
+
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
-        {toolbarButtons.map((button, index) => (
+      <div className="flex items-center px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
+        <div className="flex items-center gap-1">
+          {toolbarButtons.map((button, index) => (
+            <button
+              key={index}
+              onClick={button.action}
+              disabled={button.disabled}
+              className={`p-2 rounded transition-colors duration-150 ${
+                button.disabled
+                  ? 'opacity-40 cursor-not-allowed'
+                  : 'hover:bg-gray-200'
+              }`}
+              title={button.label}
+              type="button"
+            >
+              <button.icon className="w-4 h-4 text-gray-700" />
+            </button>
+          ))}
+        </div>
+
+        {/* More Options Menu */}
+        <div className="relative" ref={menuRef}>
           <button
-            key={index}
-            onClick={button.action}
-            disabled={button.disabled}
-            className={`p-2 rounded transition-colors duration-150 ${
-              button.disabled
-                ? 'opacity-40 cursor-not-allowed'
-                : 'hover:bg-gray-200'
-            }`}
-            title={button.label}
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="p-2 hover:bg-gray-200 rounded transition-colors duration-150"
+            title="More formatting options"
             type="button"
           >
-            <button.icon className="w-4 h-4 text-gray-700" />
+            <IoEllipsisVertical className="w-4 h-4 text-gray-700" />
           </button>
-        ))}
+
+          {isMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
+              {menuItems.map((item, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    item.action()
+                    setIsMenuOpen(false)
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-3 transition-colors duration-150"
+                  type="button"
+                >
+                  <item.icon className="w-4 h-4 text-gray-600" />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Split View: Editor + Preview */}
