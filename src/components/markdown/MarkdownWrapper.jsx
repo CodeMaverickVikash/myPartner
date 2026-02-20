@@ -1,0 +1,275 @@
+import { useState, useEffect, useRef } from 'react'
+import toast from 'react-hot-toast'
+import Sidebar from '../Sidebar'
+import Content from '../Content'
+import { loadFromLocalStorage, saveToLocalStorage } from '../../utils/storage'
+import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported, watchFile } from '../../utils/fileSystem'
+import { saveFileHandle, getFileHandle, getAllFileHandles, removeFileHandle } from '../../utils/indexedDB'
+
+function MarkdownWrapper() {
+  const [files, setFiles] = useState(new Map())
+  const [currentFileId, setCurrentFileId] = useState(null)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [fileHandles, setFileHandles] = useState(new Map()) // Store file handles for direct saving
+  const [fileModifiedTimes, setFileModifiedTimes] = useState(new Map()) // Track last modified times
+  const watchersRef = useRef(new Map()) // Store file watchers
+
+  // Load files from localStorage and file handles from IndexedDB on mount
+  useEffect(() => {
+    const loadData = async () => {
+      // Load files from localStorage
+      const savedFiles = loadFromLocalStorage('uploadedFiles')
+      if (savedFiles && savedFiles.length > 0) {
+        const filesMap = new Map()
+        savedFiles.forEach(file => {
+          filesMap.set(file.id, file)
+        })
+        setFiles(filesMap)
+
+        // Load file handles from IndexedDB
+        const handles = await getAllFileHandles()
+        setFileHandles(handles)
+
+        // Restore modified times for system files
+        const modifiedTimes = new Map()
+        for (const [fileId, handle] of handles.entries()) {
+          try {
+            const file = await handle.getFile()
+            modifiedTimes.set(fileId, file.lastModified)
+          } catch (error) {
+            console.error(`Error accessing file handle for ${fileId}:`, error)
+          }
+        }
+        setFileModifiedTimes(modifiedTimes)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  // Save files to localStorage whenever they change
+  useEffect(() => {
+    if (files.size > 0) {
+      const filesArray = Array.from(files.values())
+      saveToLocalStorage('uploadedFiles', filesArray)
+    }
+  }, [files])
+
+
+
+  const handleFileRemove = async (fileId) => {
+    if (confirm('Are you sure you want to remove this file?')) {
+      // Stop watching the file
+      const watcher = watchersRef.current.get(fileId)
+      if (watcher) {
+        watcher() // Stop watching
+        watchersRef.current.delete(fileId)
+      }
+
+      const newFiles = new Map(files)
+      newFiles.delete(fileId)
+      setFiles(newFiles)
+
+      // Remove file handle from memory
+      const newHandles = new Map(fileHandles)
+      newHandles.delete(fileId)
+      setFileHandles(newHandles)
+
+      // Remove file handle from IndexedDB
+      await removeFileHandle(fileId)
+
+      // Remove modified time
+      const newTimes = new Map(fileModifiedTimes)
+      newTimes.delete(fileId)
+      setFileModifiedTimes(newTimes)
+
+      // Clear localStorage if no files left
+      if (newFiles.size === 0) {
+        localStorage.removeItem('uploadedFiles')
+        setCurrentFileId(null)
+      } else if (currentFileId === fileId) {
+        // Set first file as current if we deleted the current file
+        setCurrentFileId(newFiles.keys().next().value)
+      }
+    }
+  }
+
+  const handleFileUpdate = (fileId, newContent) => {
+    const newFiles = new Map(files)
+    const file = newFiles.get(fileId)
+    if (file) {
+      file.content = newContent
+      file.updatedAt = new Date().toISOString()
+      newFiles.set(fileId, file)
+      setFiles(new Map(newFiles))
+    }
+  }
+
+  // Handle external file changes
+  const handleExternalFileChange = (fileId, newContent, newLastModified) => {
+    // Update file content
+    const newFiles = new Map(files)
+    const file = newFiles.get(fileId)
+    if (file) {
+      file.content = newContent
+      file.updatedAt = new Date().toISOString()
+      newFiles.set(fileId, file)
+      setFiles(newFiles)
+    }
+
+    // Update last modified time
+    const newTimes = new Map(fileModifiedTimes)
+    newTimes.set(fileId, newLastModified)
+    setFileModifiedTimes(newTimes)
+
+    // Show notification to user
+    if (file) {
+      toast.success(`File "${file.name}" was updated externally and has been reloaded.`, {
+        duration: 4000,
+        icon: '🔄'
+      })
+    }
+  }
+
+  // Start watching system files for external changes
+  useEffect(() => {
+    // Start watching all system files
+    fileHandles.forEach((fileHandle, fileId) => {
+      const file = files.get(fileId)
+      if (file && file.isSystemFile) {
+        const lastModified = fileModifiedTimes.get(fileId) || Date.now()
+
+        // Stop existing watcher if any
+        const existingWatcher = watchersRef.current.get(fileId)
+        if (existingWatcher) existingWatcher()
+
+        // Start new watcher
+        const stopWatcher = watchFile(
+          fileHandle,
+          lastModified,
+          (newContent, newLastModified) => {
+            handleExternalFileChange(fileId, newContent, newLastModified)
+          },
+          2000 // Check every 2 seconds
+        )
+
+        watchersRef.current.set(fileId, stopWatcher)
+      }
+    })
+
+    // Cleanup on unmount
+    return () => {
+      watchersRef.current.forEach(stopWatcher => stopWatcher())
+      watchersRef.current.clear()
+    }
+  }, [fileHandles, files, fileModifiedTimes])
+
+  // Open file from system using File System Access API
+  const handleOpenFromSystem = async () => {
+    if (!isFileSystemAccessSupported()) {
+      toast.error('Your browser does not support direct file system access. Please use Chrome, Edge, or Opera.', {
+        duration: 5000
+      })
+      return
+    }
+
+    try {
+      const result = await openFileFromSystem()
+      if (!result) return // User cancelled
+
+      const { fileHandle, file, content, name, path } = result
+
+      const fileData = {
+        id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        name: name.replace('.md', '').replace('.markdown', ''),
+        content,
+        uploadedAt: new Date().toISOString(),
+        isSystemFile: true, // Mark as system file
+        filePath: path // Store file path
+      }
+
+      const newFiles = new Map(files)
+      newFiles.set(fileData.id, fileData)
+      setFiles(newFiles)
+
+      // Store file handle in memory
+      const newHandles = new Map(fileHandles)
+      newHandles.set(fileData.id, fileHandle)
+      setFileHandles(newHandles)
+
+      // Store file handle in IndexedDB for persistence
+      await saveFileHandle(fileData.id, fileHandle)
+
+      // Store initial lastModified time
+      const newTimes = new Map(fileModifiedTimes)
+      newTimes.set(fileData.id, file.lastModified)
+      setFileModifiedTimes(newTimes)
+
+      setCurrentFileId(fileData.id)
+
+      toast.success(`File "${fileData.name}" opened successfully!`, {
+        duration: 3000,
+        icon: '📂'
+      })
+    } catch (err) {
+      console.error('Error opening file:', err)
+      toast.error(`Failed to open file: ${err.message}`, {
+        duration: 4000
+      })
+    }
+  }
+
+  // Save directly to system file
+  const handleSaveToSystem = async (fileId) => {
+    const fileHandle = fileHandles.get(fileId)
+    const file = files.get(fileId)
+
+    if (!fileHandle || !file) {
+      toast.error('Cannot save: File handle not found', {
+        duration: 3000
+      })
+      return
+    }
+
+    try {
+      await saveToFileHandle(fileHandle, file.content)
+      toast.success(`File "${file.name}" saved successfully!`, {
+        duration: 3000,
+        icon: '💾'
+      })
+    } catch (err) {
+      console.error('Error saving file:', err)
+      toast.error(`Failed to save file: ${err.message}`, {
+        duration: 4000
+      })
+    }
+  }
+
+  const currentFile = currentFileId ? files.get(currentFileId) : null
+  const currentFileHandle = currentFileId ? fileHandles.get(currentFileId) : null
+
+  return (
+    <>
+      <div className="app-container">
+        <Sidebar
+          files={files}
+          currentFileId={currentFileId}
+          onFileSelect={setCurrentFileId}
+          onFileRemove={handleFileRemove}
+          onOpenFromSystem={handleOpenFromSystem}
+          visible={sidebarVisible}
+        />
+        <Content
+          file={currentFile}
+          fileHandle={currentFileHandle}
+          onFileUpdate={handleFileUpdate}
+          onSaveToSystem={handleSaveToSystem}
+          onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
+          sidebarVisible={sidebarVisible}
+        />
+      </div>
+    </>
+  )
+}
+
+export default MarkdownWrapper;

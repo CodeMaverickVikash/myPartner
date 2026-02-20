@@ -16,7 +16,7 @@ import {
   IoChevronDown,
   IoChevronUp as IoChevronUpIcon
 } from 'react-icons/io5'
-import { parseMarkdown } from '../utils/markdown'
+import { parseMarkdown } from '../utils/markdown';
 
 function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScrollChange }) {
   const textareaRef = useRef(null)
