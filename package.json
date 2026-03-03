@@ -1,54 +1,33 @@
 {
-  "name": "markdown-editor",
-  "version": "1.0.0",
-  "description": "A powerful markdown editor with direct file system access, live preview, and auto-sync",
+  "name": "frontend-dev-editor",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
     "server": "node server.js",
-    "start": "npm run server"
-  },
-  "keywords": [
-    "markdown",
-    "editor",
-    "viewer",
-    "live-preview",
-    "file-system-access",
-    "auto-sync",
-    "split-view",
-    "documentation"
-  ],
-  "author": "",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/CodeMaverickVikash/markdown-viewer.git"
-  },
-  "bugs": {
-    "url": "https://github.com/CodeMaverickVikash/markdown-viewer/issues"
-  },
-  "homepage": "https://github.com/CodeMaverickVikash/markdown-viewer#readme",
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.18",
-    "@vitejs/plugin-react": "^5.1.4",
-    "autoprefixer": "^10.4.24",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.18",
-    "vite": "^7.3.1"
+    "lsp": "node lsp-bridge.js",
+    "start:all": "concurrently \"npm run server\" \"npm run lsp\" \"npm run dev\""
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.7.0",
-    "cors": "^2.8.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^4.11.0",
+    "@monaco-editor/react": "^4.5.0",
+    "axios": "^1.4.0",
     "express": "^4.18.2",
-    "highlight.js": "^11.11.1",
-    "marked": "^17.0.2",
-    "monaco-editor": "^0.55.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-hot-toast": "^2.6.0",
-    "react-icons": "^5.5.0",
-    "react-router-dom": "^7.13.0"
+    "express-ws": "^5.0.2",
+    "cors": "^2.8.5",
+    "ws": "^8.14.0",
+    "vscode-languageclient": "^9.0.1",
+    "vscode-jsonrpc": "^8.2.0",
+    "typescript": "^5.2.0",
+    "react-hot-toast": "^2.4.1",
+    "zustand": "^4.4.1"
+  },
+  "devDependencies": {
+    "vite": "^7.3.1",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript-language-server": "^4.3.2",
+    "concurrently": "^8.2.0"
   }
 }

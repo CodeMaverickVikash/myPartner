@@ -2,7 +2,7 @@ import React from 'react'
 import './App.css'
 import toast, { Toaster } from 'react-hot-toast'
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import VSCodeEditor from './components/VSCodeEditor'
+import CodeEditor from './components/CodeEditor/CodeEditor'
 
 function App() {
   return (
@@ -48,7 +48,7 @@ function App() {
       />
       <BrowserRouter>
         <Routes>
-          <Route path="/" exact element={<VSCodeEditor />} />
+          <Route path="/" exact element={<CodeEditor />} />
         </Routes>
       </BrowserRouter>
     </>

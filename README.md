@@ -13,6 +13,12 @@ A modern **React-based** interactive markdown documentation viewer with **edit m
 - **📱 Responsive Design**: Mobile-friendly with collapsible sidebar
 - **🎨 Syntax Highlighting**: Code blocks highlighted using highlight.js
 - **⚡ Fast**: Built with Vite for lightning-fast development and optimized production builds
+- **💻 Integrated Terminal**: Run shell commands directly from the editor (with security controls)
+- **🌿 Git Support**: Lightweight version control panel for status, staging, commits, and logs
+- **🧭 Breadcrumb Navigation**: Easily see the path of the current file (clickable segments coming soon)
+- **🔁 Draggable Tabs**: Rearrange open files by dragging tabs
+- **🪟 Split View**: Edit the same file side‑by‑side with a single click
+- **⚙️ Persistent Settings**: All preferences are saved in localStorage
 - **🌐 100% Static**: Deploys as static files - no server required
 
 ## 🚀 Quick Start
