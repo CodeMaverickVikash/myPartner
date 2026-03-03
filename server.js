@@ -4,8 +4,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { exec, spawnSync, spawn } from 'child_process';
-import { toSocket, WebSocketMessageReader, WebSocketMessageWriter } from 'vscode-ws-jsonrpc';
+import { spawnSync, spawn } from 'child_process';
 import { StreamMessageReader, StreamMessageWriter } from 'vscode-jsonrpc';
 
 const app = express();
@@ -234,15 +233,17 @@ app.ws('/api/lsp', (ws, req) => {
   // spawn a typescript language server process
   const serverProcess = spawn('typescript-language-server', ['--stdio'], { cwd: FILES_DIR });
 
-  const socket = toSocket(ws);
-  const reader = new WebSocketMessageReader(socket);
-  const writer = new WebSocketMessageWriter(socket);
-
   const serverReader = new StreamMessageReader(serverProcess.stdout);
   const serverWriter = new StreamMessageWriter(serverProcess.stdin);
 
-  reader.listen((message) => serverWriter.write(message));
-  serverReader.listen((message) => writer.write(message));
+  // pipe raw messages between ws and server
+  ws.on('message', (msg) => {
+    serverWriter.write(msg);
+  });
+
+  serverReader.listen((message) => {
+    try { ws.send(JSON.stringify(message)); } catch {};
+  });
 
   serverProcess.on('exit', () => ws.close());
   ws.on('close', () => serverProcess.kill());

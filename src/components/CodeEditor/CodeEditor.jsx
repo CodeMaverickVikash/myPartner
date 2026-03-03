@@ -30,34 +30,35 @@ export default function CodeEditor() {
 
   // Initialize LSP on mount
   useEffect(() => {
+    let cancelled = false
     const initLSP = async () => {
       try {
         if (projectSettings.enableLSP) {
           await lspManager.connect()
-          setLspConnected(true)
-
-          // Listen for diagnostics
-          lspManager.on('textDocument/publishDiagnostics', (params) => {
-            setDiagnostics(params.uri, params.diagnostics)
-          })
-
-          toast.success('Language Server connected', { duration: 2000 })
+          if (!cancelled) {
+            setLspConnected(true)
+            // Listen for diagnostics
+            lspManager.on('textDocument/publishDiagnostics', (params) => {
+              setDiagnostics(params.uri, params.diagnostics)
+            })
+            toast.success('Language Server connected', { duration: 2000 })
+          }
         }
       } catch (error) {
         console.error('LSP connection failed:', error)
-        toast.error('Could not connect to Language Server')
+        toast.error('Could not connect to Language Server', { duration: 3000 })
       }
     }
 
     initLSP()
 
     return () => {
+      cancelled = true
       if (lspConnected) {
         lspManager.disconnect()
       }
     }
   }, [projectSettings.enableLSP, setDiagnostics])
-
   // Handle editor mount
   const handleBeforeMount = (monaco) => {
     monacoRef.current = monaco

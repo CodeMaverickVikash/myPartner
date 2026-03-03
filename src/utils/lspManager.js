@@ -9,36 +9,57 @@ class LSPManager {
     this.listeners = new Map()
   }
 
-  // Connect to LSP server
+  // Connect to LSP server (with simple retry/backoff)
   connect(serverUrl = 'ws://localhost:9999/lsp') {
-    return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(serverUrl)
-
-        this.ws.onopen = () => {
-          console.log('✅ Connected to LSP server')
-          this.initializeServer()
-            .then(resolve)
-            .catch(reject)
+    const attempt = (delay = 0, tries = 0) => {
+      return new Promise((resolve, reject) => {
+        if (tries > 5) {
+          return reject(new Error('Failed to connect to LSP server after multiple attempts'))
         }
 
-        this.ws.onmessage = (event) => {
-          this.handleMessage(event.data)
-        }
+        setTimeout(() => {
+          try {
+            console.log(`🔌 Attempting LSP connection to ${serverUrl} (try #${tries + 1})`)
+            this.ws = new WebSocket(serverUrl)
 
-        this.ws.onerror = (error) => {
-          console.error('LSP connection error:', error)
-          reject(error)
-        }
+            this.ws.onopen = () => {
+              console.log('✅ Connected to LSP server')
+              this.initializeServer()
+                .then(resolve)
+                .catch((err) => {
+                  console.error('LSP initialize failed:', err)
+                  reject(err)
+                })
+            }
 
-        this.ws.onclose = () => {
-          console.log('⚠️ Disconnected from LSP server')
-          this.initialized = false
-        }
-      } catch (error) {
-        reject(error)
-      }
-    })
+            this.ws.onmessage = (event) => {
+              this.handleMessage(event.data)
+            }
+
+            this.ws.onerror = (error) => {
+              console.error('LSP connection error:', error)
+              // try again after delay
+              attempt(Math.min(2000, delay * 2 || 500), tries + 1)
+                .then(resolve)
+                .catch(reject)
+            }
+
+            this.ws.onclose = () => {
+              console.log('⚠️ Disconnected from LSP server')
+              this.initialized = false
+            }
+          } catch (error) {
+            console.error('WebSocket construction error:', error)
+            // attempt again
+            attempt(Math.min(2000, delay * 2 || 500), tries + 1)
+              .then(resolve)
+              .catch(reject)
+          }
+        }, delay)
+      })
+    }
+
+    return attempt(0, 0)
   }
 
   // Initialize language server
@@ -125,8 +146,35 @@ class LSPManager {
     })
   }
 
+  // ensure WebSocket is open before sending
+  ensureOpen() {
+    return new Promise((resolve, reject) => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        return resolve()
+      }
+      if (!this.ws) {
+        return reject(new Error('WebSocket not initialized'))
+      }
+      const onOpen = () => {
+        cleanup()
+        resolve()
+      }
+      const onError = (err) => {
+        cleanup()
+        reject(err)
+      }
+      const cleanup = () => {
+        this.ws.removeEventListener('open', onOpen)
+        this.ws.removeEventListener('error', onError)
+      }
+      this.ws.addEventListener('open', onOpen)
+      this.ws.addEventListener('error', onError)
+    })
+  }
+
   // Send request to language server
-  sendRequest(method, params) {
+  async sendRequest(method, params) {
+    await this.ensureOpen()
     return new Promise((resolve, reject) => {
       const id = ++this.messageId
       this.pendingRequests.set(id, { resolve, reject })
@@ -153,8 +201,9 @@ class LSPManager {
   }
 
   // Send notification to language server
-  sendNotification(method, params) {
+  async sendNotification(method, params) {
     try {
+      await this.ensureOpen()
       this.ws.send(JSON.stringify({
         jsonrpc: '2.0',
         method,
