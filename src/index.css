@@ -20,6 +20,95 @@
   --color-primary-900: #300B0B;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   IDE THEME SYSTEM
+   Apply data-theme="dark" or data-theme="light" to the root IDE element.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  /* Backgrounds */
+  --ide-bg:           #1e1e1e;
+  --ide-sidebar:      #252526;
+  --ide-actbar:       #333333;
+  --ide-tab:          #2d2d2d;
+  --ide-input:        #3c3c3c;
+  --ide-btn:          #3c3c3c;
+  --ide-btn-hover:    #4c4c4c;
+  --ide-hover:        #2a2d2e;
+  --ide-actbar-act:   #2c2c2d;
+  --ide-selected:     #094771;
+  --ide-selected-fg:  #ffffff;
+  --ide-accent:       #007acc;
+  /* Borders */
+  --ide-border:       #3e3e42;
+  --ide-border-sub:   #252526;
+  --ide-border-input: #454545;
+  /* Text */
+  --ide-text:         #d4d4d4;
+  --ide-text-muted:   #858585;
+  --ide-text-bright:  #cccccc;
+  --ide-text-header:  #bbbbbb;
+  --ide-text-white:   #ffffff;
+}
+
+[data-theme="light"] {
+  /* Backgrounds */
+  --ide-bg:           #ffffff;
+  --ide-sidebar:      #f3f3f3;
+  --ide-actbar:       #2c2c2c;
+  --ide-tab:          #ececec;
+  --ide-input:        #f0f0f0;
+  --ide-btn:          #e0e0e0;
+  --ide-btn-hover:    #d0d0d0;
+  --ide-hover:        #e8e8e8;
+  --ide-actbar-act:   #3c3c3c;
+  --ide-selected:     #cce5ff;
+  --ide-selected-fg:  #003a8c;
+  --ide-accent:       #005fb8;
+  /* Borders */
+  --ide-border:       #e0e0e0;
+  --ide-border-sub:   #d4d4d4;
+  --ide-border-input: #bdbdbd;
+  /* Text */
+  --ide-text:         #333333;
+  --ide-text-muted:   #717171;
+  --ide-text-bright:  #1e1e1e;
+  --ide-text-header:  #5a5a5a;
+  --ide-text-white:   #ffffff;
+}
+
+/* ── Background utilities ────────────────────────────────────────────────── */
+.ide-base-bg     { background-color: var(--ide-bg); }
+.ide-sidebar-bg  { background-color: var(--ide-sidebar); }
+.ide-actbar-bg   { background-color: var(--ide-actbar); }
+.ide-tab-bg      { background-color: var(--ide-tab); }
+.ide-input-bg    { background-color: var(--ide-input); }
+.ide-btn-bg      { background-color: var(--ide-btn); }
+.ide-hover-bg       { background-color: var(--ide-hover); }
+.ide-actbar-active-bg { background-color: var(--ide-actbar-act); }
+.ide-selected-bg { background-color: var(--ide-selected); color: var(--ide-selected-fg); }
+.ide-accent-bg   { background-color: var(--ide-accent); }
+
+/* ── Hover background utilities ──────────────────────────────────────────── */
+.ide-h-hover:hover   { background-color: var(--ide-hover); }
+.ide-h-btn:hover     { background-color: var(--ide-btn); }
+.ide-h-btn-dk:hover  { background-color: var(--ide-btn-hover); }
+.ide-h-selected:hover { background-color: var(--ide-selected); color: var(--ide-selected-fg); }
+
+/* ── Text utilities ──────────────────────────────────────────────────────── */
+.ide-text        { color: var(--ide-text); }
+.ide-text-muted  { color: var(--ide-text-muted); }
+.ide-text-bright { color: var(--ide-text-bright); }
+.ide-text-header { color: var(--ide-text-header); }
+.ide-h-text-bright:hover { color: var(--ide-text-bright); }
+.ide-h-text-white:hover  { color: var(--ide-text-white); }
+
+/* ── Border utilities ────────────────────────────────────────────────────── */
+.ide-border-c     { border-color: var(--ide-border); }
+.ide-border-sub-c { border-color: var(--ide-border-sub); }
+.ide-border-inp-c { border-color: var(--ide-border-input); }
+.focus\:ide-accent-border:focus { border-color: var(--ide-accent); }
+
 /* Import highlight.js theme */
 @import 'highlight.js/styles/github-dark.css';
 

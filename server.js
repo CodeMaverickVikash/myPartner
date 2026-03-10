@@ -51,6 +51,50 @@ app.get('/api/files', (req, res) => {
   }
 });
 
+// GET /api/files/search?q=term - Search file contents (must be before the wildcard route)
+app.get('/api/files/search', (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || !q.trim()) {
+      return res.status(400).json({ success: false, error: 'query parameter q is required' });
+    }
+
+    const results = [];
+    const query = q.toLowerCase();
+    const MAX_RESULTS = 200;
+
+    const searchInFile = (filePath) => {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n');
+        const matches = [];
+        lines.forEach((line, idx) => {
+          if (line.toLowerCase().includes(query)) {
+            matches.push({ line: idx + 1, content: line.trimEnd(), column: line.toLowerCase().indexOf(query) + 1 });
+          }
+        });
+        if (matches.length > 0) {
+          results.push({ file: path.relative(FILES_DIR, filePath).replace(/\\/g, '/'), matches });
+        }
+      } catch (_) { /* skip binary / unreadable files */ }
+    };
+
+    const walk = (dir) => {
+      if (results.length >= MAX_RESULTS) return;
+      fs.readdirSync(dir).forEach(item => {
+        const full = path.join(dir, item);
+        if (fs.statSync(full).isDirectory()) walk(full);
+        else searchInFile(full);
+      });
+    };
+
+    walk(FILES_DIR);
+    res.json({ success: true, results, query: q });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // GET /api/files/:path - Read a file
 app.get('/api/files/*', (req, res) => {
   try {
@@ -228,6 +272,8 @@ app.post('/api/workspace', (req, res) => {
   }
 });
 
+// (duplicate search route removed – canonical route is above the wildcard GET)
+
 // Language server websocket endpoint
 app.ws('/api/lsp', (ws, req) => {
   // spawn a typescript language server process
@@ -259,28 +305,52 @@ app.post('/api/terminal/execute', (req, res) => {
       return res.status(400).json({ success: false, error: 'command is required' });
     }
 
-    // List of allowed commands for safety
-    const allowedCommands = ['ls', 'dir', 'pwd', 'echo', 'cat', 'git', 'npm', 'node'];
-    const commandName = command.split(' ')[0];
-    
+    // List of allowed commands for safety (comprehensive IDE terminal set)
+    const allowedCommands = [
+      // File system
+      'ls', 'dir', 'pwd', 'echo', 'cat', 'type', 'more', 'less',
+      'touch', 'mkdir', 'mv', 'cp', 'rm', 'del', 'copy', 'move',
+      'find', 'grep', 'where', 'which',
+      'head', 'tail', 'wc', 'sort', 'uniq', 'diff',
+      'tree', 'stat', 'file',
+      // System info
+      'date', 'time', 'whoami', 'hostname', 'uname', 'clear',
+      'env', 'set', 'printenv', 'export',
+      // Node / package managers
+      'node', 'npm', 'npx', 'yarn', 'pnpm', 'bun',
+      // Python
+      'python', 'python3', 'pip', 'pip3', 'pipenv', 'poetry',
+      // Version control
+      'git',
+      // Build tools
+      'make', 'cmake', 'cargo', 'go', 'tsc', 'babel', 'eslint', 'prettier',
+      // Editors / misc CLI
+      'code', 'curl', 'wget', 'ping', 'nslookup',
+      'lsof', 'ps', 'kill', 'pkill',
+      // PowerShell-friendly
+      'Get-ChildItem', 'Get-Location', 'Set-Location', 'cd', 'ls.exe',
+    ];
+    const commandName = command.split(/\s+/)[0].replace(/^["']|["']$/g, '');
+
     if (!allowedCommands.includes(commandName)) {
-      return res.status(403).json({ success: false, error: 'Command not allowed' });
+      return res.status(403).json({ success: false, error: `Command not allowed: '${commandName}'. Use git, npm, node, ls, cat, echo, find, grep, etc.` });
     }
 
     // Execute command in the project directory with timeout
     const result = spawnSync(command, [], {
       cwd: FILES_DIR,
       shell: true,
-      timeout: 10000,
+      timeout: 15000,
       encoding: 'utf-8'
     });
 
     const output = (result.stdout || '') + (result.stderr || '');
     const success = result.status === 0 || result.status === null;
 
-    res.json({ 
-      success, 
+    res.json({
+      success,
       output,
+      cwd: FILES_DIR,
       status: result.status,
       error: result.error ? result.error.message : null
     });
@@ -299,12 +369,20 @@ app.get('/api/git/status', (req, res) => {
     });
 
     const lines = result.stdout.trim().split('\n').filter(line => line.length > 0);
-    const changes = lines.map(line => ({
-      status: line.substring(0, 2),
-      file: line.substring(3),
-      staged: line[0] !== ' ',
-      modified: line[1] !== ' '
-    }));
+    const changes = lines.map(line => {
+      const xy = line.substring(0, 2);
+      const filePath = line.substring(3);
+      // Determine a single-letter display status
+      const x = xy[0]; // index status
+      const y = xy[1]; // working tree status
+      let status = 'M';
+      if (x === '?' || y === '?') status = '?';
+      else if (x === 'D' || y === 'D') status = 'D';
+      else if (x === 'A') status = 'A';
+      else if (x === 'R' || y === 'R') status = 'R';
+      else if (x === 'M' || y === 'M') status = 'M';
+      return { status, path: filePath, file: filePath, staged: x !== ' ' && x !== '?', modified: y !== ' ' };
+    });
 
     res.json({ success: true, changes, raw: result.stdout });
   } catch (error) {
@@ -376,13 +454,18 @@ app.post('/api/git/commit', (req, res) => {
 // GET /api/git/log - Get commit history
 app.get('/api/git/log', (req, res) => {
   try {
-    const limit = req.query.limit || 10;
-    const result = spawnSync('git', ['log', `--oneline`, `-${limit}`], {
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const result = spawnSync('git', ['log', '--pretty=format:%H|%s|%an|%ar', `-${limit}`], {
       cwd: FILES_DIR,
       encoding: 'utf-8'
     });
 
-    const commits = result.stdout.trim().split('\n').filter(line => line.length > 0);
+    const commits = result.stdout.trim().split('\n')
+      .filter(line => line.length > 0)
+      .map(line => {
+        const [hash, message, author, date] = line.split('|');
+        return { hash, message, author, date };
+      });
     res.json({ success: true, commits, raw: result.stdout });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

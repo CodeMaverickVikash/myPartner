@@ -92,36 +92,137 @@ export const renameFile = async (oldPath, newPath) => {
   }
 };
 
-// Get file extension and language
+// Monaco language IDs – must exactly match Monaco's registered language identifiers
+const LANGUAGE_MAP = {
+  // JavaScript / TypeScript
+  'js':    'javascript',
+  'jsx':   'javascript',   // Monaco uses 'javascript' for JSX too
+  'mjs':   'javascript',
+  'cjs':   'javascript',
+  'ts':    'typescript',
+  'tsx':   'typescript',   // Monaco uses 'typescript' for TSX too
+  'mts':   'typescript',
+  'cts':   'typescript',
+  'd.ts':  'typescript',
+  // Web
+  'html':  'html',
+  'htm':   'html',
+  'css':   'css',
+  'scss':  'scss',
+  'sass':  'scss',
+  'less':  'less',
+  // Data / Config
+  'json':  'json',
+  'jsonc': 'json',
+  'xml':   'xml',
+  'xsl':   'xml',
+  'svg':   'xml',
+  'yaml':  'yaml',
+  'yml':   'yaml',
+  'toml':  'ini',
+  'ini':   'ini',
+  'env':   'ini',
+  // Scripting
+  'py':    'python',
+  'rb':    'ruby',
+  'php':   'php',
+  'lua':   'lua',
+  'r':     'r',
+  // Systems / JVM
+  'java':  'java',
+  'kt':    'kotlin',
+  'kts':   'kotlin',
+  'scala': 'scala',
+  'cpp':   'cpp',
+  'cc':    'cpp',
+  'cxx':   'cpp',
+  'c':     'c',
+  'h':     'c',
+  'hpp':   'cpp',
+  'cs':    'csharp',
+  'go':    'go',
+  'rs':    'rust',
+  'swift': 'swift',
+  // Shell
+  'sh':    'shell',
+  'bash':  'shell',
+  'zsh':   'shell',
+  'fish':  'shell',
+  'ps1':   'powershell',
+  'psm1':  'powershell',
+  'bat':   'bat',
+  'cmd':   'bat',
+  // Docs / Text
+  'md':    'markdown',
+  'mdx':   'markdown',
+  'txt':   'plaintext',
+  'log':   'plaintext',
+  // DB
+  'sql':   'sql',
+  'graphql': 'graphql',
+  'gql':   'graphql',
+  // Misc
+  'dockerfile': 'dockerfile',
+  'makefile':   'makefile',
+};
+
+// Display names shown in the status bar (human-readable)
+const DISPLAY_LANGUAGE_MAP = {
+  'javascript': 'JavaScript',
+  'typescript': 'TypeScript',
+  'html':       'HTML',
+  'css':        'CSS',
+  'scss':       'SCSS',
+  'less':       'Less',
+  'json':       'JSON',
+  'xml':        'XML',
+  'yaml':       'YAML',
+  'ini':        'INI / TOML',
+  'python':     'Python',
+  'ruby':       'Ruby',
+  'php':        'PHP',
+  'lua':        'Lua',
+  'r':          'R',
+  'java':       'Java',
+  'kotlin':     'Kotlin',
+  'scala':      'Scala',
+  'cpp':        'C++',
+  'c':          'C',
+  'csharp':     'C#',
+  'go':         'Go',
+  'rust':       'Rust',
+  'swift':      'Swift',
+  'shell':      'Shell Script',
+  'powershell': 'PowerShell',
+  'bat':        'Batch',
+  'markdown':   'Markdown',
+  'sql':        'SQL',
+  'graphql':    'GraphQL',
+  'dockerfile': 'Dockerfile',
+  'makefile':   'Makefile',
+  'plaintext':  'Plain Text',
+};
+
+/** Returns the Monaco language ID for a given file path */
 export const getLanguageFromExtension = (filePath) => {
-  const ext = filePath.split('.').pop().toLowerCase();
-  const languageMap = {
-    'js': 'javascript',
-    'jsx': 'jsx',
-    'ts': 'typescript',
-    'tsx': 'typescript',
-    'py': 'python',
-    'java': 'java',
-    'cpp': 'cpp',
-    'c': 'c',
-    'cs': 'csharp',
-    'rb': 'ruby',
-    'go': 'go',
-    'rs': 'rust',
-    'php': 'php',
-    'sql': 'sql',
-    'html': 'html',
-    'css': 'css',
-    'scss': 'scss',
-    'less': 'less',
-    'json': 'json',
-    'xml': 'xml',
-    'yaml': 'yaml',
-    'yml': 'yaml',
-    'md': 'markdown',
-    'txt': 'plaintext',
-  };
-  return languageMap[ext] || 'plaintext';
+  const name = (filePath || '').split('/').pop().toLowerCase();
+  // Special full-name matches first
+  if (name === 'dockerfile') return 'dockerfile';
+  if (name === 'makefile')   return 'makefile';
+  // Strip leading dot for hidden files (.env → env)
+  const ext = name.includes('.') ? name.split('.').pop() : name;
+  return LANGUAGE_MAP[ext] || 'plaintext';
+};
+
+/** Returns a human-readable label for the status bar */
+export const getDisplayLanguage = (filePath) => {
+  const lang = getLanguageFromExtension(filePath);
+  const name  = (filePath || '').split('/').pop().toLowerCase();
+  const ext   = name.includes('.') ? name.split('.').pop() : '';
+  // Distinguish JSX / TSX in the display label
+  if (ext === 'jsx') return 'JavaScript (JSX)';
+  if (ext === 'tsx') return 'TypeScript (JSX)';
+  return DISPLAY_LANGUAGE_MAP[lang] || lang;
 };
 
 // Workspace config helpers
@@ -173,6 +274,19 @@ export const getFileIcon = (filePath) => {
     'zip': '📦',
   };
   return iconMap[ext] || '📄';
+};
+
+// Search file contents
+export const searchInFiles = async (query) => {
+  try {
+    const response = await fetch(`${API_BASE}/files/search?q=${encodeURIComponent(query)}`);
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error);
+    return data.results;
+  } catch (error) {
+    console.error('Error searching files:', error);
+    throw error;
+  }
 };
 
 // Terminal command execution

@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "vite",
     "server": "node server.js",
-    "lsp": "node lsp-bridge.js",
-    "start:all": "concurrently \"npm run server\" \"npm run lsp\" \"npm run dev\""
+    "start": "concurrently --names \"API,UI\" --prefix-colors \"cyan,green\" \"npm run server\" \"npm run dev\"",
+    "start:all": "npm run start"
   },
   "dependencies": {
     "react": "^18.2.0",
