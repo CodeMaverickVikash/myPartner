@@ -3,6 +3,8 @@ import aiContextManager from '../utils/AIContextManager';
 import codeAnalyzer from '../utils/CodeAnalyzer';
 import aiAgent from '../utils/AIAgent';
 import codeCompleter from '../utils/CodeCompleter';
+import aiChatManager from '../utils/AIChatManager';
+import aiActionAgent from '../utils/AIActionAgent';
 import { toast } from 'react-hot-toast';
 import '../styles/AIPanel.css';
 
@@ -11,13 +13,22 @@ import '../styles/AIPanel.css';
  * Integrates Better Context, Better Agent, and Better Code features
  */
 const AIPanel = ({ isOpen, onClose, currentFile, editorContent, editorPosition }) => {
-  const [activeTab, setActiveTab] = useState('suggestions'); // suggestions, generate, analyze, complete
+  const [activeTab, setActiveTab] = useState('suggestions'); // suggestions, generate, analyze, complete, chat, agent
   const [suggestions, setSuggestions] = useState([]);
   const [generatedCode, setGeneratedCode] = useState('');
   const [analysisResults, setAnalysisResults] = useState(null);
   const [completions, setCompletions] = useState([]);
   const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
+  // Chat state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMode, setChatMode] = useState('coder'); // coder, debugger, teacher, reviewer
+  const [chatLoading, setChatLoading] = useState(false);
+  // Agent state
+  const [availableActions, setAvailableActions] = useState([]);
+  const [actionHistory, setActionHistory] = useState([]);
+  const [executedActions, setExecutedActions] = useState([]);
 
   // Analyze code whenever file changes
   useEffect(() => {
@@ -28,6 +39,15 @@ const AIPanel = ({ isOpen, onClose, currentFile, editorContent, editorPosition }
       // Get comprehensive suggestions
       const refactoringSuggestions = aiAgent.suggestRefactoring(currentFile, editorContent);
       setSuggestions(refactoringSuggestions);
+
+      // Get available actions for this file
+      const actions = aiActionAgent.getAvailableActions(currentFile, editorContent);
+      setAvailableActions(actions);
+
+      // Initialize chat for this file if not already started
+      if (!chatMessages.length) {
+        aiChatManager.startConversation(currentFile);
+      }
     }
   }, [currentFile, editorContent]);
 
@@ -94,6 +114,111 @@ const AIPanel = ({ isOpen, onClose, currentFile, editorContent, editorPosition }
     }
   };
 
+  /**
+   * Handle chat mode change
+   */
+  const handleChangeChatMode = (mode) => {
+    setChatMode(mode);
+    aiChatManager.setMode(mode);
+    toast.success(`Switched to ${mode} mode`);
+  };
+
+  /**
+   * Send chat message
+   */
+  const handleSendChat = async () => {
+    if (!chatInput.trim()) {
+      toast.error('Please type a message');
+      return;
+    }
+
+    if (!currentFile) {
+      toast.error('Open a file to chat about');
+      return;
+    }
+
+    setChatLoading(true);
+    try {
+      // Add user message
+      const userMsg = {
+        role: 'user',
+        content: chatInput,
+        timestamp: Date.now()
+      };
+      
+      aiChatManager.addMessage(currentFile, 'user', chatInput);
+      setChatMessages(prev => [...prev, userMsg]);
+
+      // Get AI response
+      const context = aiContextManager.analyzeFileContext(currentFile, editorContent || '');
+      const result = aiChatManager.processQuery(currentFile, chatInput, {
+        code: editorContent,
+        context: context,
+        line: editorPosition?.line || 1,
+        column: editorPosition?.column || 0
+      });
+
+      // Add AI message
+      const aiMsg = {
+        role: 'assistant',
+        content: result.response,
+        timestamp: Date.now(),
+        suggestions: result.suggestions,
+        actions: result.actions
+      };
+
+      aiChatManager.addMessage(currentFile, 'assistant', result.response);
+      setChatMessages(prev => [...prev, aiMsg]);
+
+      setChatInput('');
+      toast.success('Response received!');
+    } catch (error) {
+      toast.error('Failed to send message: ' + error.message);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  /**
+   * Execute an action
+   */
+  const handleExecuteAction = (action) => {
+    try {
+      const result = aiActionAgent.executeAction(action);
+      
+      if (result.success) {
+        const executedAction = {
+          actionId: action.id,
+          label: action.label,
+          status: 'success',
+          timestamp: Date.now(),
+          result: result.result
+        };
+        
+        setExecutedActions(prev => [...prev, executedAction]);
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.error('Failed to execute action: ' + error.message);
+    }
+  };
+
+  /**
+   * Get action icon based on type
+   */
+  const getActionIcon = (action) => {
+    const icons = {
+      'fix': '🔧',
+      'refactor': '✨',
+      'format': '📐',
+      'optimize': '⚡',
+      'documentation': '📖'
+    };
+    return icons[action.type] || '⚙️';
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -130,6 +255,18 @@ const AIPanel = ({ isOpen, onClose, currentFile, editorContent, editorPosition }
           onClick={() => setActiveTab('complete')}
         >
           ⌨ Complete
+        </button>
+        <button
+          className={`ai-tab ${activeTab === 'chat' ? 'active' : ''}`}
+          onClick={() => setActiveTab('chat')}
+        >
+          💬 Chat
+        </button>
+        <button
+          className={`ai-tab ${activeTab === 'agent' ? 'active' : ''}`}
+          onClick={() => setActiveTab('agent')}
+        >
+          🤖 Agent
         </button>
       </div>
 
@@ -323,6 +460,140 @@ const AIPanel = ({ isOpen, onClose, currentFile, editorContent, editorPosition }
                     <span className="completion-kind">{completion.kind}</span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Chat Tab */}
+        {activeTab === 'chat' && (
+          <div className="ai-section chat-section">
+            <div className="chat-header">
+              <h4>AI Chat Assistant</h4>
+              <div className="chat-modes">
+                {['coder', 'debugger', 'teacher', 'reviewer'].map(mode => (
+                  <button
+                    key={mode}
+                    className={`chat-mode-btn ${chatMode === mode ? 'active' : ''}`}
+                    onClick={() => handleChangeChatMode(mode)}
+                    title={`${mode} mode`}
+                  >
+                    {mode === 'coder' && '👨‍💻'}
+                    {mode === 'debugger' && '🐛'}
+                    {mode === 'teacher' && '👨‍🏫'}
+                    {mode === 'reviewer' && '👀'}
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="chat-messages">
+              {chatMessages.length === 0 ? (
+                <p className="ai-empty">Start a conversation about your code. Ask questions, get explanations, or request improvements!</p>
+              ) : (
+                chatMessages.map((msg, idx) => (
+                  <div key={idx} className={`chat-message ${msg.role}`}>
+                    <div className="message-role">
+                      {msg.role === 'user' ? '👤 You' : '🤖 Assistant'}
+                    </div>
+                    <div className="message-content">{msg.content}</div>
+                    {msg.suggestions && msg.suggestions.length > 0 && (
+                      <div className="message-suggestions">
+                        <strong>Suggestions:</strong>
+                        {msg.suggestions.map((sug, sidx) => (
+                          <div key={sidx} className="suggestion-item">✓ {sug}</div>
+                        ))}
+                      </div>
+                    )}
+                    {msg.actions && msg.actions.length > 0 && (
+                      <div className="message-actions">
+                        <strong>Available Actions:</strong>
+                        {msg.actions.map((action, aidx) => (
+                          <div key={aidx} className="action-item">{action}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Chat Input */}
+            <div className="chat-input-area">
+              <textarea
+                className="ai-input chat-input"
+                placeholder={`Ask me anything about your code (${chatMode} mode)...`}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendChat()}
+                rows={2}
+              />
+              <button
+                className="ai-action-btn chat-send-btn"
+                onClick={handleSendChat}
+                disabled={chatLoading}
+              >
+                {chatLoading ? '⏳ Thinking...' : '📤 Send'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Agent Tab */}
+        {activeTab === 'agent' && (
+          <div className="ai-section agent-section">
+            <h4>🤖 AI Action Agent</h4>
+            <p className="ai-help-text">Automatically fix issues, refactor code, and apply improvements</p>
+
+            {/* Available Actions */}
+            {availableActions.length === 0 ? (
+              <p className="ai-empty">Open a file to see available actions</p>
+            ) : (
+              <div className="actions-container">
+                <h5>Available Actions</h5>
+                <div className="actions-list">
+                  {availableActions.map((action, idx) => (
+                    <div key={idx} className={`action-card ${action.severity}`}>
+                      <div className="action-header">
+                        <span className="action-icon">{getActionIcon(action)}</span>
+                        <span className="action-label">{action.label}</span>
+                        <span className={`action-severity ${action.severity}`}>
+                          {action.severity}
+                        </span>
+                      </div>
+                      <p className="action-description">{action.description}</p>
+                      <button
+                        className="action-execute-btn"
+                        onClick={() => handleExecuteAction(action)}
+                        disabled={!action.executable}
+                      >
+                        {action.executable ? '⚡ Execute' : '💭 Review'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Executed Actions History */}
+            {executedActions.length > 0 && (
+              <div className="executed-actions">
+                <h5>Executed Actions</h5>
+                <div className="actions-history">
+                  {executedActions.slice(-5).map((action, idx) => (
+                    <div key={idx} className="action-history-item success">
+                      <span className="history-icon">✅</span>
+                      <div className="history-info">
+                        <div className="history-action">{action.label}</div>
+                        <div className="history-time">
+                          {new Date(action.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
