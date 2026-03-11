@@ -12,11 +12,15 @@ import FileExplorer from './FileExplorer';
 import CommandPalette from './CommandPalette';
 import SettingsPanel from './SettingsPanel';
 import SearchPanel from './SearchPanel';
+import OpenProjectPanel from './OpenProjectPanel';
+import { useAutoSave } from '../utils/useAutoSave';
+import { projectManager } from '../utils/projectManager';
 import * as api from '../utils/api';
 
 export default function VSCodeEditor() {
   // ─── Files ────────────────────────────────────────────────────────────────
   const [openFiles, setOpenFiles]     = useState({});   // { path: {content,saved} }
+  const [projectFiles, setProjectFiles] = useState({}); // { fileId: {fileData from projectManager} }
   const [currentFile, setCurrentFile] = useState(null);
   const [allFiles, setAllFiles]       = useState([]);
 
@@ -30,6 +34,7 @@ export default function VSCodeEditor() {
   const [isPaletteOpen, setIsPaletteOpen]   = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFileSearchOpen, setIsFileSearchOpen] = useState(false);
+  const [isProjectPanelOpen, setIsProjectPanelOpen] = useState(false);
 
   // ─── Terminal ─────────────────────────────────────────────────────────────
   const [termHistory, setTermHistory] = useState([
@@ -75,6 +80,64 @@ export default function VSCodeEditor() {
     refreshGit();
   }, []);
 
+  // ─── Auto-save on focus change (window blur) ──────────────────────────────
+  useEffect(() => {
+    const handleWindowBlur = async () => {
+      // Save all unsaved project files
+      const unsavedFiles = projectManager.getUnsavedFiles();
+      if (unsavedFiles.length > 0) {
+        try {
+          await Promise.all(unsavedFiles.map(file => projectManager.saveFile(file.id)));
+          toast.success(`Auto-saved ${unsavedFiles.length} file(s)`, { duration: 1500 });
+        } catch (err) {
+          console.error('Auto-save failed:', err);
+          toast.error('Failed to auto-save files', { duration: 1500 });
+        }
+      }
+
+      // Also save regular editor files if autoSave is enabled
+      if (settings.autoSave) {
+        const unsavedRegular = Object.entries(openFiles)
+          .filter(([_, file]) => !file.saved)
+          .map(([path, _]) => path);
+        
+        if (unsavedRegular.length > 0) {
+          try {
+            await Promise.all(unsavedRegular.map(path => handleSaveFile(path)));
+          } catch (err) {
+            console.error('Auto-save failed for regular files:', err);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('blur', handleWindowBlur);
+    return () => window.removeEventListener('blur', handleWindowBlur);
+  }, [openFiles, settings.autoSave]);
+
+  // ─── Listen for project file open events ───────────────────────────────────
+  useEffect(() => {
+    const handleOpenProjectFile = (event) => {
+      const { fileId, fileData, fileName } = event.detail;
+      
+      // Set current file to the project file
+      setCurrentFile(`project:${fileId}`);
+      
+      // Add to project files if not already open
+      if (!projectFiles[fileId]) {
+        setProjectFiles(prev => ({
+          ...prev,
+          [fileId]: fileData
+        }));
+      }
+
+      toast.success(`Opened: ${fileName}`, { duration: 1200 });
+    };
+
+    window.addEventListener('openProjectFile', handleOpenProjectFile);
+    return () => window.removeEventListener('openProjectFile', handleOpenProjectFile);
+  }, [projectFiles]);
+
   useEffect(() => {
     termEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [termHistory]);
@@ -107,6 +170,7 @@ export default function VSCodeEditor() {
     { id:'save',              category:'File',   name:'Save',                      icon:'💾', shortcut:'Ctrl+S',           action:() => handleSaveFile() },
     { id:'save-all',          category:'File',   name:'Save All',                  icon:'💾', shortcut:'Ctrl+Shift+S',     action:() => handleSaveAll() },
     { id:'go-to-file',        category:'File',   name:'Go to File…',               icon:'🔍', shortcut:'Ctrl+P',           action:() => setIsFileSearchOpen(true) },
+    { id:'open-project',      category:'File',   name:'Open Project',              icon:'📂', shortcut:'Ctrl+Shift+O',     action:() => setIsProjectPanelOpen(true) },
     { id:'close-tab',         category:'File',   name:'Close Editor',              icon:'❌', shortcut:'Ctrl+W',           action:() => currentFile && handleCloseTab(currentFile) },
     // View
     { id:'toggle-sidebar',    category:'View',   name:'Toggle Sidebar',            icon:'📁', shortcut:'Ctrl+B',           action:() => setSidebarOpen(p => !p) },
@@ -181,6 +245,15 @@ export default function VSCodeEditor() {
 
   const handleEditorChange = (value) => {
     if (!currentFile) return;
+    
+    // Handle project files
+    if (currentFile.startsWith('project:')) {
+      const fileId = currentFile.replace('project:', '');
+      projectManager.updateFileContent(fileId, value ?? '');
+      return;
+    }
+
+    // Handle regular files
     setOpenFiles(prev => ({ ...prev, [currentFile]: { content: value ?? '', saved: false } }));
     if (settings.autoSave) {
       clearTimeout(autoSaveTimer.current);
@@ -762,9 +835,10 @@ declare module 'react-dom/client' {
           <div className="flex flex-col flex-1 overflow-hidden">
 
             {/* Tab bar */}
-            {Object.keys(openFiles).length > 0 && (
+            {(Object.keys(openFiles).length > 0 || Object.keys(projectFiles).length > 0) && (
               <div className="flex overflow-x-auto shrink-0 ide-tab-bg border-b ide-border-sub-c"
                 style={{ scrollbarWidth: 'none' }}>
+                {/* Regular files */}
                 {Object.keys(openFiles).map(fp => (
                   <div key={fp}
                     className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer text-xs whitespace-nowrap border-r ide-border-sub-c shrink-0 group transition-colors
@@ -784,6 +858,31 @@ declare module 'react-dom/client' {
                     </button>
                   </div>
                 ))}
+                {/* Project files */}
+                {Object.keys(projectFiles).map(fileId => {
+                  const file = projectFiles[fileId];
+                  const displayFileId = `project:${fileId}`;
+                  const fileName = file.path ? file.path.split('/').pop() : 'Untitled';
+                  return (
+                    <div key={displayFileId}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer text-xs whitespace-nowrap border-r ide-border-sub-c shrink-0 group transition-colors
+                        ${currentFile === displayFileId
+                          ? 'ide-base-bg ide-text border-t-2 border-t-(--ide-accent)'
+                          : 'ide-tab-bg ide-text-muted ide-h-btn ide-h-text-bright border-t-2 border-t-transparent'}`}
+                      onClick={() => setCurrentFile(displayFileId)}>
+                      <span className="text-[10px]">📄</span>
+                      <span>{fileName}</span>
+                      {!file.saved && (
+                        <span className="w-1.5 h-1.5 rounded-full ide-text-bright shrink-0" title="Unsaved" style={{ backgroundColor: 'var(--ide-text-bright)' }} />
+                      )}
+                      <button
+                        className="opacity-0 group-hover:opacity-100 ml-0.5 rounded p-0.5 hover:bg-[#ffffff22] ide-text-muted ide-h-text-bright"
+                        onClick={e => { e.stopPropagation(); projectManager.removeFile(fileId); setProjectFiles(prev => { const next = {...prev}; delete next[fileId]; return next; }); }} title="Close">
+                        <FiX size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -791,7 +890,9 @@ declare module 'react-dom/client' {
             {settings.breadcrumbs !== false && currentFile && (
               <div className="flex items-center gap-0 px-3 py-0.5 ide-base-bg border-b ide-border-c text-xs ide-text-muted shrink-0 overflow-x-auto"
                 style={{ scrollbarWidth: 'none' }}>
-                {currentFile.split('/').map((seg, i, arr) => (
+                {(currentFile.startsWith('project:') 
+                  ? projectFiles[currentFile.replace('project:', '')]?.path?.split('/') ?? [currentFile]
+                  : currentFile.split('/')).map((seg, i, arr) => (
                   <span key={i} className="flex items-center gap-0">
                     {i > 0 && <FiChevronRight size={10} className="mx-1 opacity-50" />}
                     <span className={i === arr.length - 1 ? 'ide-text-bright' : 'ide-h-text-bright cursor-pointer'}>{seg}</span>
@@ -806,8 +907,12 @@ declare module 'react-dom/client' {
                 <Editor
                   key={currentFile}
                   path={currentFile}
-                  language={api.getLanguageFromExtension(currentFile)}
-                  value={openFiles[currentFile]?.content ?? ''}
+                  language={currentFile.startsWith('project:') ? 'plaintext' : api.getLanguageFromExtension(currentFile)}
+                  value={
+                    currentFile.startsWith('project:')
+                      ? projectFiles[currentFile.replace('project:', '')]?.content ?? ''
+                      : openFiles[currentFile]?.content ?? ''
+                  }
                   onChange={handleEditorChange}
                   beforeMount={handleEditorBeforeMount}
                   onMount={handleEditorMount}
@@ -1043,6 +1148,7 @@ declare module 'react-dom/client' {
       <SearchPanel isOpen={isFileSearchOpen} onClose={() => setIsFileSearchOpen(false)} files={allFiles} onSelectFile={handleSelectFile} />
       <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} commands={commands} />
       <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={settings} onSettingsChange={setSettings} />
+      <OpenProjectPanel isOpen={isProjectPanelOpen} onClose={() => setIsProjectPanelOpen(false)} onProjectOpened={() => {}} />
     </div>
   );
 }

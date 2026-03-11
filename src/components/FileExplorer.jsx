@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { FiChevronRight, FiChevronDown, FiFile, FiFolder, FiFolderPlus, FiPlus, FiTrash2, FiEdit2, FiRefreshCw } from 'react-icons/fi';
+import { FiChevronRight, FiChevronDown, FiFile, FiFolder, FiFolderPlus, FiPlus, FiTrash2, FiEdit2, FiRefreshCw, FiX } from 'react-icons/fi';
 import { VscNewFile, VscNewFolder, VscCollapseAll } from 'react-icons/vsc';
 import toast from 'react-hot-toast';
 import * as api from "../utils/api";
+import { projectManager } from "../utils/projectManager";
 
 // ── File-type icon + color map ──────────────────────────────────────────────
 const FILE_ICONS = {
@@ -43,15 +44,73 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
   const [files, setFiles] = useState([]);
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [loading, setLoading] = useState(true);
-  const [contextMenu, setContextMenu] = useState(null);
-  const [showNewItemDialog, setShowNewItemDialog] = useState(null); // 'file' | 'folder' | null
+  const [contextMenu, setContextMenu] = useState(null); // { type: 'file'|'folder'|'project', path/id, x, y, name }
+  const [showNewItemDialog, setShowNewItemDialog] = useState(null); // { type: 'file'|'folder', location: path/projectId }
   const [newItemName, setNewItemName] = useState('');
   const [renamingPath, setRenamingPath] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const newItemInputRef = useRef(null);
+  
+  // ─── Project files state ───────────────────────────────────────────────────
+  const [projectsList, setProjectsList] = useState([]);
+  const [projectFiles, setProjectFiles] = useState({});
+  const [expandedProjects, setExpandedProjects] = useState(new Set());
 
   useEffect(() => {
     loadFiles();
+  }, []);
+
+  // ─── Load and listen to project changes ────────────────────────────────────
+  useEffect(() => {
+    // Initial load
+    refreshProjectsList();
+
+    // Listen to project manager events
+    const unsubscribeFileAdded = projectManager.on('fileAdded', (fileData) => {
+      refreshProjectsList();
+    });
+
+    const unsubscribeFileRemoved = projectManager.on('fileRemoved', (fileData) => {
+      refreshProjectsList();
+    });
+
+    const unsubscribeFileChanged = projectManager.on('fileChanged', (fileData) => {
+      setProjectFiles(prev => ({
+        ...prev,
+        [fileData.id]: fileData
+      }));
+    });
+
+    const unsubscribeFileSaved = projectManager.on('fileSaved', (fileData) => {
+      setProjectFiles(prev => ({
+        ...prev,
+        [fileData.id]: fileData
+      }));
+    });
+
+    const unsubscribeProjectOpened = projectManager.on('projectOpened', (project) => {
+      refreshProjectsList();
+      // Auto-expand newly opened project
+      setExpandedProjects(prev => new Set([...prev, project.id]));
+    });
+
+    const unsubscribeProjectClosed = projectManager.on('projectClosed', (project) => {
+      refreshProjectsList();
+      setExpandedProjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(project.id);
+        return newSet;
+      });
+    });
+
+    return () => {
+      if (unsubscribeFileAdded) unsubscribeFileAdded();
+      if (unsubscribeFileRemoved) unsubscribeFileRemoved();
+      if (unsubscribeFileChanged) unsubscribeFileChanged();
+      if (unsubscribeFileSaved) unsubscribeFileSaved();
+      if (unsubscribeProjectOpened) unsubscribeProjectOpened();
+      if (unsubscribeProjectClosed) unsubscribeProjectClosed();
+    };
   }, []);
 
   const loadFiles = async () => {
@@ -63,6 +122,68 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
       toast.error('Failed to load files');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ─── Project file management ──────────────────────────────────────────────
+  const refreshProjectsList = () => {
+    const projects = projectManager.getAllProjects();
+    setProjectsList(projects);
+    
+    // Update project files map
+    const filesMap = {};
+    projects.forEach(project => {
+      const projFiles = projectManager.getProjectFiles(project.id);
+      projFiles.forEach(file => {
+        filesMap[file.id] = file;
+      });
+    });
+    setProjectFiles(filesMap);
+  };
+
+  const toggleProject = (projectId) => {
+    setExpandedProjects(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(projectId)) {
+        newSet.delete(projectId);
+      } else {
+        newSet.add(projectId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleProjectFileClick = (fileId, fileName) => {
+    // Dispatch custom event to open file in editor
+    window.dispatchEvent(new CustomEvent('openProjectFile', {
+      detail: {
+        fileId,
+        fileData: projectFiles[fileId],
+        fileName
+      }
+    }));
+  };
+
+  const handleRemoveProjectFile = (fileId, e) => {
+    e.stopPropagation();
+    projectManager.removeFile(fileId);
+    toast.success('File removed from project');
+  };
+
+  const handleCloseProject = (projectId, e) => {
+    e.stopPropagation();
+    const project = projectManager.getProject(projectId);
+    const projFiles = projectManager.getProjectFiles(projectId);
+    const unsavedCount = projFiles.filter(f => !f.saved).length;
+
+    let confirmMessage = `Close project "${project?.name}"?`;
+    if (unsavedCount > 0) {
+      confirmMessage += `\n\n⚠️ ${unsavedCount} file(s) have unsaved changes.`;
+    }
+
+    if (window.confirm(confirmMessage)) {
+      projectManager.closeProject(projectId);
+      toast.success('Project closed');
     }
   };
 
@@ -97,15 +218,59 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
   };
 
   const handleCreateItem = async () => {
-    if (!newItemName.trim()) { toast.error('Enter a name'); return; }
+    if (!newItemName.trim()) { 
+      toast.error('Please enter a name'); 
+      return; 
+    }
+    
+    if (!showNewItemDialog) {
+      toast.error('No dialog context');
+      return;
+    }
+    
     try {
-      await api.createFile(newItemName, '', showNewItemDialog === 'folder' ? 'folder' : 'file');
+      const isFolder = showNewItemDialog.type === 'folder';
+      let location = showNewItemDialog.location;
+      
+      // Normalize path separators to forward slashes (Windows compatibility)
+      if (location) {
+        location = location.replace(/\\/g, '/');
+      }
+      
+      console.log('Creating item:', { type: showNewItemDialog.type, location, name: newItemName });
+      
+      // Handle project file creation
+      if (location && location.startsWith('project:')) {
+        const projectId = location.replace('project:', '');
+        const project = projectManager.getProject(projectId);
+        if (project) {
+          toast.info('Files can be added to project by opening from that folder', { duration: 3000 });
+        } else {
+          toast.error('Project not found');
+        }
+        setNewItemName('');
+        setShowNewItemDialog(null);
+        return;
+      }
+      
+      // Handle regular file/folder creation
+      const itemPath = location ? `${location}/${newItemName}` : newItemName;
+      console.log('Creating file/folder:', itemPath);
+      
+      const result = await api.createFile(itemPath, '', isFolder ? 'folder' : 'file');
+      console.log('Creation result:', result);
+      
       setNewItemName('');
       setShowNewItemDialog(null);
-      loadFiles();
-      toast.success(`${showNewItemDialog === 'folder' ? 'Folder' : 'File'} created`);
+      
+      // Refresh lists
+      await loadFiles();
+      await refreshProjectsList();
+      
+      toast.success(`${isFolder ? 'Folder' : 'File'} created successfully`);
     } catch (error) {
-      toast.error('Failed to create');
+      console.error('Error creating item:', error);
+      toast.error(`Failed to create: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -154,6 +319,17 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
               className="flex items-center gap-1 px-2 py-[3px] cursor-pointer ide-h-hover ide-text-bright text-sm select-none group"
               style={{ paddingLeft: `${8 + depth * 12}px` }}
               onClick={() => toggleFolder(item.path)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenu({
+                  type: 'folder',
+                  path: item.path,
+                  name: item.name,
+                  x: e.clientX,
+                  y: e.clientY
+                });
+              }}
             >
               {expandedFolders.has(item.path)
                 ? <FiChevronDown size={14} className="shrink-0 ide-text-muted" />
@@ -215,17 +391,126 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
     ));
   };
 
+  // ─── Render projects section ──────────────────────────────────────────────
+  const renderProjectsSection = () => {
+    if (projectsList.length === 0) return null;
+
+    return (
+      <div className="border-t ide-border-c">
+        {/* Projects header */}
+        <div className="flex items-center justify-between px-3 py-1.5 ide-text-header text-[11px] uppercase tracking-widest font-semibold shrink-0 ide-sidebar-bg sticky top-0 z-10">
+          <span>Projects</span>
+          <span className="text-[9px] ide-text-muted">{projectsList.length}</span>
+        </div>
+
+        {/* Projects list */}
+        <div>
+          {projectsList.map(project => {
+            const projFiles = projectManager.getProjectFiles(project.id);
+            const isExpanded = expandedProjects.has(project.id);
+
+            return (
+              <div key={project.id}>
+                {/* Project header */}
+                <div
+                  className="flex items-center gap-1 px-2 py-[3px] cursor-pointer ide-h-hover ide-text-bright text-sm select-none group"
+                  onClick={() => toggleProject(project.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({
+                      type: 'project',
+                      id: project.id,
+                      name: project.name,
+                      x: e.clientX,
+                      y: e.clientY
+                    });
+                  }}
+                >
+                  {isExpanded
+                    ? <FiChevronDown size={14} className="shrink-0 ide-text-muted" />
+                    : <FiChevronRight size={14} className="shrink-0 ide-text-muted" />}
+                  <FiFolder size={15} style={{ color: '#e8bf60', flexShrink: 0 }} />
+                  <span className="truncate flex-1">{project.name}</span>
+                  <span className="text-[10px] ide-text-muted">({projFiles.length})</span>
+                  <button
+                    className="opacity-0 group-hover:opacity-100 shrink-0 ml-1 p-0.5 rounded hover:bg-[#ff000044] ide-text-muted hover:text-[#f48771]"
+                    onClick={(e) => handleCloseProject(project.id, e)}
+                    title="Close project"
+                  >
+                    <FiX size={12} />
+                  </button>
+                </div>
+
+                {/* Project files */}
+                {isExpanded && (
+                  <div>
+                    {projFiles.length === 0 ? (
+                      <div className="text-[11px] ide-text-muted px-6 py-1">No files</div>
+                    ) : (
+                      projFiles.map(file => (
+                        <div
+                          key={file.id}
+                          className={`flex items-center gap-1.5 py-[3px] cursor-pointer text-sm select-none group relative
+                            ${currentFile === `project:${file.id}` ? 'ide-selected-bg' : 'ide-text-bright ide-h-hover'}`}
+                          style={{ paddingLeft: '32px', paddingRight: '6px' }}
+                          onClick={() => handleProjectFileClick(file.id, file.path)}
+                        >
+                          {/* File icon */}
+                          {(() => {
+                            const fileName = file.path.split('/').pop();
+                            const s = getFileStyle(fileName);
+                            return (
+                              <span className="text-[10px] font-bold rounded px-0.5 shrink-0 leading-4"
+                                style={{ color: s.color, backgroundColor: s.bg, minWidth: '18px', textAlign: 'center' }}>
+                                {s.icon}
+                              </span>
+                            );
+                          })()}
+                          
+                          {/* File name */}
+                          <span className="truncate flex-1" title={file.path}>
+                            {file.path.split('/').pop()}
+                          </span>
+
+                          {/* Unsaved indicator */}
+                          {!file.saved && (
+                            <span className="w-1.5 h-1.5 rounded-full ide-text-bright shrink-0" title="Unsaved"
+                              style={{ backgroundColor: '#ffd700' }} />
+                          )}
+
+                          {/* Delete button */}
+                          <button
+                            className="opacity-0 group-hover:opacity-100 shrink-0 p-0.5 rounded hover:bg-[#ff000044] ide-text-muted hover:text-[#f48771]"
+                            onClick={(e) => handleRemoveProjectFile(file.id, e)}
+                            title="Close file"
+                          >
+                            <FiX size={12} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full ide-sidebar-bg select-none overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 ide-text-header text-[11px] uppercase tracking-widest font-semibold shrink-0">
         <span>Explorer</span>
         <div className="flex items-center gap-1">
-          <button onClick={() => { setShowNewItemDialog('file'); setTimeout(() => newItemInputRef.current?.focus(), 50); }}
+          <button onClick={() => { setShowNewItemDialog({ type: 'file', location: null }); setTimeout(() => newItemInputRef.current?.focus(), 50); }}
             className="p-1 rounded ide-h-btn ide-text-muted ide-h-text-bright" title="New File">
             <VscNewFile size={16} />
           </button>
-          <button onClick={() => { setShowNewItemDialog('folder'); setTimeout(() => newItemInputRef.current?.focus(), 50); }}
+          <button onClick={() => { setShowNewItemDialog({ type: 'folder', location: null }); setTimeout(() => newItemInputRef.current?.focus(), 50); }}
             className="p-1 rounded ide-h-btn ide-text-muted ide-h-text-bright" title="New Folder">
             <VscNewFolder size={16} />
           </button>
@@ -239,10 +524,17 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
       {/* New item input */}
       {showNewItemDialog && (
         <div className="px-2 py-1.5 border-b ide-border-c ide-base-bg">
+          <div className="text-[10px] ide-text-muted mb-1 truncate">
+            {showNewItemDialog.location
+              ? showNewItemDialog.location.startsWith('project:')
+                ? `in ${projectManager.getProject(showNewItemDialog.location.replace('project:', ''))?.name || 'project'}`
+                : `in ${showNewItemDialog.location}`
+              : 'in root'}
+          </div>
           <input
             ref={newItemInputRef}
             type="text"
-            placeholder={showNewItemDialog === 'folder' ? 'Folder name…' : 'File name (e.g., index.jsx)'}
+            placeholder={showNewItemDialog.type === 'folder' ? 'Folder name…' : 'File name (e.g., index.jsx)'}
             value={newItemName}
             onChange={(e) => setNewItemName(e.target.value)}
             onKeyDown={(e) => {
@@ -264,12 +556,17 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
       {/* File tree */}
       <div className="flex-1 overflow-y-auto py-1">
         {loading ? (
-          <div className="px-4 py-4 ide-text-muted text-xs animate-pulse">Loading…</div>
-        ) : files.length === 0 ? (
+          <div className="px-4 py-4 ide-text-muted text-xs animate-pulse">Loading Files…</div>
+        ) : files.length === 0 && projectsList.length === 0 ? (
           <div className="px-4 py-6 text-center ide-text-muted text-xs leading-relaxed">
-            No files yet.<br />Click <strong className="ide-text-bright">+</strong> to create one.
+            No files yet.<br />Click <strong className="ide-text-bright">+</strong> to create one or open a project.
           </div>
-        ) : renderFileTree(files)}
+        ) : (
+          <>
+            {files.length > 0 && renderFileTree(files)}
+            {renderProjectsSection()}
+          </>
+        )}
       </div>
 
       {/* Context menu */}
@@ -279,19 +576,83 @@ export default function FileExplorer({ onSelectFile, openFiles, currentFile, onO
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onMouseLeave={() => setContextMenu(null)}
         >
-          <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
-            onClick={() => { setRenamingPath(contextMenu.path); setRenameValue(contextMenu.path.split('/').pop()); setContextMenu(null); }}>
-            <FiEdit2 size={13} /> Rename
-          </button>
-          <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
-            onClick={() => handleDuplicateFile(contextMenu.path)}>
-            <FiFile size={13} /> Duplicate
-          </button>
-          <div className="border-t ide-border-c my-1" />
-          <button className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#5a1d1d] text-[#f48771] text-left"
-            onClick={(e) => { handleDeleteFile(contextMenu.path, e); setContextMenu(null); }}>
-            <FiTrash2 size={13} /> Delete
-          </button>
+          {/* Folder context menu */}
+          {contextMenu.type === 'folder' && (
+            <>
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => {
+                  setContextMenu(null);
+                  setShowNewItemDialog({ type: 'file', location: contextMenu.path });
+                  setTimeout(() => newItemInputRef.current?.focus(), 50);
+                }}>
+                <FiFile size={13} /> New File
+              </button>
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => {
+                  setContextMenu(null);
+                  setShowNewItemDialog({ type: 'folder', location: contextMenu.path });
+                  setTimeout(() => newItemInputRef.current?.focus(), 50);
+                }}>
+                <FiFolderPlus size={13} /> New Folder
+              </button>
+              <div className="border-t ide-border-c my-1" />
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => { setRenamingPath(contextMenu.path); setRenameValue(contextMenu.name); setContextMenu(null); }}>
+                <FiEdit2 size={13} /> Rename
+              </button>
+              <div className="border-t ide-border-c my-1" />
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#5a1d1d] text-[#f48771] text-left"
+                onClick={(e) => { handleDeleteFile(contextMenu.path, e); setContextMenu(null); }}>
+                <FiTrash2 size={13} /> Delete
+              </button>
+            </>
+          )}
+
+          {/* Project context menu */}
+          {contextMenu.type === 'project' && (
+            <>
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => {
+                  setContextMenu(null);
+                  setShowNewItemDialog({ type: 'file', location: `project:${contextMenu.id}` });
+                  setTimeout(() => newItemInputRef.current?.focus(), 50);
+                }}>
+                <FiFile size={13} /> New File
+              </button>
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => {
+                  setContextMenu(null);
+                  setShowNewItemDialog({ type: 'folder', location: `project:${contextMenu.id}` });
+                  setTimeout(() => newItemInputRef.current?.focus(), 50);
+                }}>
+                <FiFolderPlus size={13} /> New Folder
+              </button>
+              <div className="border-t ide-border-c my-1" />
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#5a1d1d] text-[#f48771] text-left"
+                onClick={(e) => { handleCloseProject(contextMenu.id, e); setContextMenu(null); }}>
+                <FiTrash2 size={13} /> Close Project
+              </button>
+            </>
+          )}
+
+          {/* File context menu (default) */}
+          {contextMenu.type === 'file' && (
+            <>
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => { setRenamingPath(contextMenu.path); setRenameValue(contextMenu.path.split('/').pop()); setContextMenu(null); }}>
+                <FiEdit2 size={13} /> Rename
+              </button>
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 ide-h-selected text-left"
+                onClick={() => handleDuplicateFile(contextMenu.path)}>
+                <FiFile size={13} /> Duplicate
+              </button>
+              <div className="border-t ide-border-c my-1" />
+              <button className="flex items-center gap-2 w-full px-3 py-1.5 hover:bg-[#5a1d1d] text-[#f48771] text-left"
+                onClick={(e) => { handleDeleteFile(contextMenu.path, e); setContextMenu(null); }}>
+                <FiTrash2 size={13} /> Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -215,7 +215,7 @@ function listFilesRecursive(dir, baseDir = FILES_DIR) {
   
   files.forEach(file => {
     const filePath = path.join(dir, file);
-    const relativePath = path.relative(baseDir, filePath);
+    const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
     const stat = fs.statSync(filePath);
     
     if (stat.isDirectory()) {
