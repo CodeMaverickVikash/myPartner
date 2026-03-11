@@ -13,9 +13,11 @@ import CommandPalette from './CommandPalette';
 import SettingsPanel from './SettingsPanel';
 import SearchPanel from './SearchPanel';
 import OpenProjectPanel from './OpenProjectPanel';
+import AIPanel from './AIPanel';
 import { useAutoSave } from '../utils/useAutoSave';
 import { projectManager } from '../utils/projectManager';
 import * as api from '../utils/api';
+import aiContextManager from '../utils/AIContextManager';
 
 export default function VSCodeEditor() {
   // ─── Files ────────────────────────────────────────────────────────────────
@@ -35,6 +37,7 @@ export default function VSCodeEditor() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFileSearchOpen, setIsFileSearchOpen] = useState(false);
   const [isProjectPanelOpen, setIsProjectPanelOpen] = useState(false);
+  const [isAIPanelOpen, setIsAIPanelOpen]   = useState(false);
 
   // ─── Terminal ─────────────────────────────────────────────────────────────
   const [termHistory, setTermHistory] = useState([
@@ -209,6 +212,7 @@ export default function VSCodeEditor() {
       if (e.shiftKey && e.code === 'KeyP') { e.preventDefault(); setIsPaletteOpen(true); }
       else if (e.shiftKey && e.code === 'KeyF') { e.preventDefault(); setActiveActivity('search'); setSidebarOpen(true); }
       else if (e.shiftKey && e.code === 'KeyS') { e.preventDefault(); handleSaveAll(); }
+      else if (e.shiftKey && e.code === 'KeyA') { e.preventDefault(); setIsAIPanelOpen(p => !p); }
       else if (e.code === 'KeyP') { e.preventDefault(); setIsFileSearchOpen(true); }
       else if (e.code === 'Comma') { e.preventDefault(); setIsSettingsOpen(true); }
       else if (e.code === 'Backquote') { e.preventDefault(); toggleBottom('terminal'); }
@@ -666,6 +670,14 @@ declare module 'react-dom/client' {
                   {gitChanges.length}
                 </span>
               )}
+            </button>
+            <button 
+              className={`flex items-center justify-center w-12 h-12 relative hover:bg-[#404854] ${
+                isAIPanelOpen ? 'bg-[#404854] text-[#3b82f6]' : 'ide-text-muted ide-h-text-white'
+              }`}
+              onClick={() => setIsAIPanelOpen(p => !p)} 
+              title="AI Assistant (Ctrl+Shift+A)">
+              <span style={{ fontSize: '18px' }}>⚡</span>
             </button>
           </div>
           <div className="flex flex-col pb-1">
@@ -1149,6 +1161,13 @@ declare module 'react-dom/client' {
       <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} commands={commands} />
       <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={settings} onSettingsChange={setSettings} />
       <OpenProjectPanel isOpen={isProjectPanelOpen} onClose={() => setIsProjectPanelOpen(false)} onProjectOpened={() => {}} />
+      <AIPanel 
+        isOpen={isAIPanelOpen} 
+        onClose={() => setIsAIPanelOpen(false)}
+        currentFile={currentFile}
+        editorContent={currentFile ? (openFiles[currentFile]?.content || projectFiles[currentFile]?.content || '') : ''}
+        editorPosition={cursorPos}
+      />
     </div>
   );
 }
