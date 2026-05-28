@@ -1,9 +1,6 @@
 # Dependencies
 node_modules/
 
-# Dependencies
-node_modules/
-
 # Build output (Vercel will build this)
 dist/
 public/

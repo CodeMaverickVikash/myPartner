@@ -1,4 +1,6 @@
-import { useRef, useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
+import type { IconType } from 'react-icons'
 import {
   IoText,
   IoCode,
@@ -13,32 +15,43 @@ import {
   IoGridOutline,
   IoChatboxOutline,
   IoTerminalOutline,
-  IoChevronDown,
-  IoChevronUp as IoChevronUpIcon
+  IoChevronDown
 } from 'react-icons/io5'
-import { parseMarkdown } from '../utils/markdown';
+import { parseMarkdown } from '../utils/markdown'
 
-function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScrollChange }) {
-  const textareaRef = useRef(null)
-  const previewRef = useRef(null)
-  const containerRef = useRef(null)
+interface MarkdownEditorProps {
+  content: string
+  onChange: (content: string) => void
+  initialScrollPosition?: number
+  onScrollChange?: (scrollTop: number) => void
+}
+
+interface ToolbarButton {
+  icon: IconType
+  label: string
+  action: () => void
+  disabled?: boolean
+}
+
+function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScrollChange }: MarkdownEditorProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const previewRef = useRef<HTMLDivElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [editorWidth, setEditorWidth] = useState(50)
   const [isResizing, setIsResizing] = useState(false)
   const scrollRestored = useRef(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const menuRef = useRef(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
-  // Undo/Redo history
-  const [history, setHistory] = useState([content])
+  const [history, setHistory] = useState<string[]>([content])
   const [historyIndex, setHistoryIndex] = useState(0)
   const isUndoRedoAction = useRef(false)
 
-  // Update history when content changes (but not during undo/redo)
   useEffect(() => {
     if (!isUndoRedoAction.current && content !== history[historyIndex]) {
       const newHistory = history.slice(0, historyIndex + 1)
       newHistory.push(content)
-      // Limit history to 50 entries
+
       if (newHistory.length > 50) {
         newHistory.shift()
       } else {
@@ -49,7 +62,6 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     isUndoRedoAction.current = false
   }, [content, history, historyIndex])
 
-  // Restore scroll position when component mounts
   useEffect(() => {
     if (textareaRef.current && initialScrollPosition > 0 && !scrollRestored.current) {
       textareaRef.current.scrollTop = initialScrollPosition
@@ -57,11 +69,10 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     }
   }, [initialScrollPosition])
 
-  const insertMarkdown = (before, after = '', placeholder = '') => {
+  const insertMarkdown = (before: string, after = '', placeholder = '') => {
     const textarea = textareaRef.current
     if (!textarea) return
 
-    // Save current scroll position and selection BEFORE any changes
     const currentScrollTop = textarea.scrollTop
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
@@ -73,13 +84,10 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
       before + textToInsert + after +
       content.substring(end)
 
-    // Calculate new cursor position
     const newCursorPos = start + before.length + textToInsert.length
 
-    // Update content
     onChange(newText)
 
-    // Use setTimeout to ensure React has updated the DOM
     setTimeout(() => {
       if (textareaRef.current) {
         textareaRef.current.focus()
@@ -89,7 +97,6 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     }, 10)
   }
 
-  // Advanced markdown insertions
   const insertTable = () => {
     const tableTemplate = `| Header 1 | Header 2 | Header 3 |
 | -------- | -------- | -------- |
@@ -98,30 +105,12 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     insertMarkdown('', '', tableTemplate)
   }
 
-  const insertTaskList = () => {
-    insertMarkdown('- [ ] ', '', 'Task item')
-  }
-
-  const insertBlockquote = () => {
-    insertMarkdown('> ', '', 'Quote text')
-  }
-
-  const insertCodeBlock = (language = '') => {
-    insertMarkdown(`\`\`\`${language}\n`, '\n\`\`\`', 'code here')
-  }
-
-  const insertHorizontalRule = () => {
-    insertMarkdown('\n---\n', '', '')
-  }
-
-  const insertStrikethrough = () => {
-    insertMarkdown('~~', '~~', 'strikethrough text')
-  }
-
-  const insertFootnote = () => {
-    insertMarkdown('[^1]', '', '')
-  }
-
+  const insertTaskList = () => insertMarkdown('- [ ] ', '', 'Task item')
+  const insertBlockquote = () => insertMarkdown('> ', '', 'Quote text')
+  const insertCodeBlock = (language = '') => insertMarkdown(`\`\`\`${language}\n`, '\n\`\`\`', 'code here')
+  const insertHorizontalRule = () => insertMarkdown('\n---\n', '', '')
+  const insertStrikethrough = () => insertMarkdown('~~', '~~', 'strikethrough text')
+  const insertFootnote = () => insertMarkdown('[^1]', '', '')
   const insertCollapsible = () => {
     const template = `<details>
 <summary>Click to expand</summary>
@@ -132,35 +121,29 @@ Content goes here
     insertMarkdown('', '', template)
   }
 
-  // Synchronized scrolling
   const handleEditorScroll = () => {
     if (!textareaRef.current || !previewRef.current) return
 
     const textarea = textareaRef.current
     const preview = previewRef.current
+    const maxEditorScroll = textarea.scrollHeight - textarea.clientHeight
+    const maxPreviewScroll = preview.scrollHeight - preview.clientHeight
+    const scrollPercentage = maxEditorScroll > 0 ? textarea.scrollTop / maxEditorScroll : 0
 
-    const scrollPercentage = textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight)
-    preview.scrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight)
-
-    // Save scroll position
-    if (onScrollChange) {
-      onScrollChange(textarea.scrollTop)
-    }
+    preview.scrollTop = scrollPercentage * maxPreviewScroll
+    onScrollChange?.(textarea.scrollTop)
   }
 
-  // Resize handlers
   const handleMouseDown = () => {
     setIsResizing(true)
   }
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = (event: MouseEvent) => {
     if (!containerRef.current) return
 
-    const container = containerRef.current
-    const containerRect = container.getBoundingClientRect()
-    const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
+    const containerRect = containerRef.current.getBoundingClientRect()
+    const newWidth = ((event.clientX - containerRect.left) / containerRect.width) * 100
 
-    // Limit between 20% and 80%
     if (newWidth >= 20 && newWidth <= 80) {
       setEditorWidth(newWidth)
     }
@@ -170,7 +153,6 @@ Content goes here
     setIsResizing(false)
   }
 
-  // Add/remove mouse event listeners using useEffect
   useEffect(() => {
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove)
@@ -183,10 +165,9 @@ Content goes here
     }
   }, [isResizing])
 
-  // Close menu when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && event.target instanceof Node && !menuRef.current.contains(event.target)) {
         setIsMenuOpen(false)
       }
     }
@@ -203,9 +184,9 @@ Content goes here
   const handleUndo = () => {
     if (historyIndex > 0) {
       isUndoRedoAction.current = true
-      const currentScrollTop = textareaRef.current?.scrollTop || 0
-      const currentSelectionStart = textareaRef.current?.selectionStart || 0
-      const currentSelectionEnd = textareaRef.current?.selectionEnd || 0
+      const currentScrollTop = textareaRef.current?.scrollTop ?? 0
+      const currentSelectionStart = textareaRef.current?.selectionStart ?? 0
+      const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0
       const newIndex = historyIndex - 1
       setHistoryIndex(newIndex)
       onChange(history[newIndex])
@@ -213,7 +194,6 @@ Content goes here
         if (textareaRef.current) {
           textareaRef.current.focus()
           textareaRef.current.scrollTop = currentScrollTop
-          // Try to restore selection if still valid
           const maxLength = textareaRef.current.value.length
           const safeStart = Math.min(currentSelectionStart, maxLength)
           const safeEnd = Math.min(currentSelectionEnd, maxLength)
@@ -226,9 +206,9 @@ Content goes here
   const handleRedo = () => {
     if (historyIndex < history.length - 1) {
       isUndoRedoAction.current = true
-      const currentScrollTop = textareaRef.current?.scrollTop || 0
-      const currentSelectionStart = textareaRef.current?.selectionStart || 0
-      const currentSelectionEnd = textareaRef.current?.selectionEnd || 0
+      const currentScrollTop = textareaRef.current?.scrollTop ?? 0
+      const currentSelectionStart = textareaRef.current?.selectionStart ?? 0
+      const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0
       const newIndex = historyIndex + 1
       setHistoryIndex(newIndex)
       onChange(history[newIndex])
@@ -236,7 +216,6 @@ Content goes here
         if (textareaRef.current) {
           textareaRef.current.focus()
           textareaRef.current.scrollTop = currentScrollTop
-          // Try to restore selection if still valid
           const maxLength = textareaRef.current.value.length
           const safeStart = Math.min(currentSelectionStart, maxLength)
           const safeEnd = Math.min(currentSelectionEnd, maxLength)
@@ -246,7 +225,7 @@ Content goes here
     }
   }
 
-  const toolbarButtons = [
+  const toolbarButtons: ToolbarButton[] = [
     { icon: IoArrowUndo, label: 'Undo (Ctrl+Z)', action: handleUndo, disabled: historyIndex <= 0 },
     { icon: IoArrowRedo, label: 'Redo (Ctrl+Y)', action: handleRedo, disabled: historyIndex >= history.length - 1 },
     { icon: IoText, label: 'Bold', action: () => insertMarkdown('**', '**', 'bold text') },
@@ -256,10 +235,10 @@ Content goes here
     { icon: IoList, label: 'Unordered List', action: () => insertMarkdown('- ', '', 'list item') },
     { icon: IoList, label: 'Ordered List', action: () => insertMarkdown('1. ', '', 'list item') },
     { icon: IoLink, label: 'Link', action: () => insertMarkdown('[', '](url)', 'link text') },
-    { icon: IoImage, label: 'Image', action: () => insertMarkdown('![', '](url)', 'alt text') },
+    { icon: IoImage, label: 'Image', action: () => insertMarkdown('![', '](url)', 'alt text') }
   ]
 
-  const menuItems = [
+  const menuItems: ToolbarButton[] = [
     { icon: IoGridOutline, label: 'Table', action: insertTable },
     { icon: IoCheckboxOutline, label: 'Task List', action: insertTaskList },
     { icon: IoChatboxOutline, label: 'Blockquote', action: insertBlockquote },
@@ -267,12 +246,11 @@ Content goes here
     { icon: IoRemoveOutline, label: 'Horizontal Rule', action: insertHorizontalRule },
     { icon: IoText, label: 'Strikethrough', action: insertStrikethrough },
     { icon: IoText, label: 'Footnote', action: insertFootnote },
-    { icon: IoChevronDown, label: 'Collapsible Section', action: insertCollapsible },
+    { icon: IoChevronDown, label: 'Collapsible Section', action: insertCollapsible }
   ]
 
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden">
-      {/* Toolbar */}
       <div className="flex items-center px-4 py-2 border-b border-sage/30 bg-gradient-to-r from-cream/30 to-white shrink-0">
         <div className="flex items-center gap-1">
           {toolbarButtons.map((button, index) => (
@@ -293,7 +271,6 @@ Content goes here
           ))}
         </div>
 
-        {/* More Options Menu */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -325,9 +302,7 @@ Content goes here
         </div>
       </div>
 
-      {/* Split View: Editor + Preview */}
       <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
-        {/* Editor */}
         <div
           className="flex flex-col border-r border-sage/30"
           style={{ width: `${editorWidth}%` }}
@@ -339,17 +314,15 @@ Content goes here
             ref={textareaRef}
             className="flex-1 p-6 bg-white text-gray-800 border-none font-mono text-[0.95rem] leading-relaxed resize-none outline-none overflow-y-auto"
             value={content}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(event) => onChange(event.target.value)}
             onScroll={handleEditorScroll}
-            onKeyDown={(e) => {
-              // Ctrl+Z for Undo
-              if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
-                e.preventDefault()
+            onKeyDown={(event) => {
+              if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
+                event.preventDefault()
                 handleUndo()
               }
-              // Ctrl+Y or Ctrl+Shift+Z for Redo
-              if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
-                e.preventDefault()
+              if ((event.ctrlKey && event.key === 'y') || (event.ctrlKey && event.shiftKey && event.key === 'z')) {
+                event.preventDefault()
                 handleRedo()
               }
             }}
@@ -358,15 +331,13 @@ Content goes here
           />
         </div>
 
-        {/* Resizer */}
         <div
           className="w-1 bg-sage/40 hover:bg-forest cursor-col-resize shrink-0 transition-colors duration-150 relative group"
-          onMouseDown={handleMouseDown}
+          onMouseDown={handleMouseDown as (event: ReactMouseEvent<HTMLDivElement>) => void}
         >
           <div className="absolute inset-y-0 -left-1 -right-1" />
         </div>
 
-        {/* Preview */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="px-4 py-2 bg-cream/40 border-b border-sage/30 text-xs font-medium text-forest">
             PREVIEW
@@ -383,4 +354,3 @@ Content goes here
 }
 
 export default MarkdownEditor
-

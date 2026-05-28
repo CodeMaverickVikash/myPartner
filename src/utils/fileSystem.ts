@@ -1,48 +1,38 @@
-// File System Access API utilities
+export interface OpenFileResult {
+  fileHandle: FileSystemFileHandle
+  file: File
+  content: string
+  name: string
+  path: string
+}
 
-/**
- * Check if File System Access API is supported
- */
+export interface FileModificationResult {
+  modified: boolean
+  newContent: string | null
+  lastModified: number
+}
+
 export const isFileSystemAccessSupported = () => {
   return 'showOpenFilePicker' in window && 'showSaveFilePicker' in window
 }
 
-/**
- * Get file path from file handle and file object
- * Note: Full absolute path is not available for security reasons in browsers
- * We can only show the file name, but we'll try to get as much info as possible
- */
-export const getFilePath = async (fileHandle, file) => {
+export const getFilePath = async (fileHandle: FileSystemFileHandle, file: File) => {
   try {
-    let path = ''
-
-    // Try to get webkitRelativePath (for directory uploads)
-    if (file && file.webkitRelativePath) {
-      path = file.webkitRelativePath
-    }
-    // Try to get path from File System Access API (limited info)
-    else if (fileHandle && fileHandle.name) {
-      path = fileHandle.name
-    }
-    // Fallback to file name
-    else if (file && file.name) {
-      path = file.name
-    }
-    else {
-      path = 'Unknown location'
+    if (file.webkitRelativePath) {
+      return file.webkitRelativePath
     }
 
-    return path
-  } catch (err) {
+    if (fileHandle.name) {
+      return fileHandle.name
+    }
+
+    return file.name || 'Unknown location'
+  } catch {
     return 'Unknown location'
   }
 }
 
-/**
- * Open a file from the user's system
- * Returns: { fileHandle, file, content, name, path }
- */
-export const openFileFromSystem = async () => {
+export const openFileFromSystem = async (): Promise<OpenFileResult | null> => {
   try {
     const [fileHandle] = await window.showOpenFilePicker({
       types: [
@@ -69,33 +59,23 @@ export const openFileFromSystem = async () => {
       path
     }
   } catch (err) {
-    if (err.name === 'AbortError') {
-      // User cancelled the picker
+    if (err instanceof DOMException && err.name === 'AbortError') {
       return null
     }
     throw err
   }
 }
 
-/**
- * Save content directly to the file handle
- */
-export const saveToFileHandle = async (fileHandle, content) => {
+export const saveToFileHandle = async (fileHandle: FileSystemFileHandle, content: string) => {
   try {
-    // Request permission if needed
     const permission = await fileHandle.requestPermission({ mode: 'readwrite' })
-    
+
     if (permission !== 'granted') {
       throw new Error('Permission to write file was denied')
     }
 
-    // Create a writable stream
     const writable = await fileHandle.createWritable()
-    
-    // Write the content
     await writable.write(content)
-    
-    // Close the file
     await writable.close()
 
     return true
@@ -105,10 +85,7 @@ export const saveToFileHandle = async (fileHandle, content) => {
   }
 }
 
-/**
- * Save as new file (prompts user for location)
- */
-export const saveAsNewFile = async (content, suggestedName = 'document.md') => {
+export const saveAsNewFile = async (content: string, suggestedName = 'document.md') => {
   try {
     const fileHandle = await window.showSaveFilePicker({
       suggestedName,
@@ -123,22 +100,19 @@ export const saveAsNewFile = async (content, suggestedName = 'document.md') => {
     })
 
     await saveToFileHandle(fileHandle, content)
-
     return fileHandle
   } catch (err) {
-    if (err.name === 'AbortError') {
-      // User cancelled
+    if (err instanceof DOMException && err.name === 'AbortError') {
       return null
     }
     throw err
   }
 }
 
-/**
- * Check if file has been modified externally
- * Returns: { modified: boolean, newContent: string, lastModified: number }
- */
-export const checkFileModified = async (fileHandle, lastModified) => {
+export const checkFileModified = async (
+  fileHandle: FileSystemFileHandle,
+  lastModified: number
+): Promise<FileModificationResult> => {
   try {
     const file = await fileHandle.getFile()
     const fileLastModified = file.lastModified
@@ -167,19 +141,18 @@ export const checkFileModified = async (fileHandle, lastModified) => {
   }
 }
 
-/**
- * Start watching a file for external changes
- * Returns a cleanup function to stop watching
- */
-export const watchFile = (fileHandle, lastModified, onFileChanged, interval = 2000) => {
-  const intervalId = setInterval(async () => {
+export const watchFile = (
+  fileHandle: FileSystemFileHandle,
+  lastModified: number,
+  onFileChanged: (newContent: string, lastModified: number) => void,
+  interval = 2000
+) => {
+  const intervalId = window.setInterval(async () => {
     const result = await checkFileModified(fileHandle, lastModified)
-    if (result.modified) {
+    if (result.modified && result.newContent !== null) {
       onFileChanged(result.newContent, result.lastModified)
     }
   }, interval)
 
-  // Return cleanup function
-  return () => clearInterval(intervalId)
+  return () => window.clearInterval(intervalId)
 }
-

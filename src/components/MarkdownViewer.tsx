@@ -1,21 +1,23 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
+import type { RefObject } from 'react'
 import { parseMarkdown } from '../utils/markdown'
 
-function MarkdownViewer({ content, markdownViewerRef }) {
+interface MarkdownViewerProps {
+  content: string
+  markdownViewerRef: RefObject<HTMLDivElement | null>
+}
 
+function MarkdownViewer({ content, markdownViewerRef }: MarkdownViewerProps) {
   useEffect(() => {
     if (markdownViewerRef.current) {
-      const html = parseMarkdown(content)
-      markdownViewerRef.current.innerHTML = html
-      
-      // Add IDs to headings for navigation
+      markdownViewerRef.current.innerHTML = parseMarkdown(content)
+
       const headings = markdownViewerRef.current.querySelectorAll('h1, h2, h3, h4, h5, h6')
       headings.forEach(heading => {
-        const id = heading.textContent.toLowerCase().replace(/[^\w]+/g, '-')
-        heading.id = id
+        heading.id = (heading.textContent ?? '').toLowerCase().replace(/[^\w]+/g, '-')
       })
     }
-  }, [content])
+  }, [content, markdownViewerRef])
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-12 bg-white markdown-content" ref={markdownViewerRef}>
@@ -25,4 +27,3 @@ function MarkdownViewer({ content, markdownViewerRef }) {
 }
 
 export default MarkdownViewer
-

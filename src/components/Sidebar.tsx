@@ -1,6 +1,16 @@
 import { IoBook, IoDocument, IoClose, IoFolderOpen, IoFolder, IoLink } from 'react-icons/io5'
 import { extractHeadings } from '../utils/markdown'
 import { isFileSystemAccessSupported } from '../utils/fileSystem'
+import type { MarkdownFile } from '../types'
+
+interface SidebarProps {
+  files: Map<string, MarkdownFile>
+  currentFileId: string | null
+  onFileSelect: (fileId: string) => void
+  onFileRemove: (fileId: string) => void
+  onOpenFromSystem: () => void
+  visible: boolean
+}
 
 function Sidebar({
   files,
@@ -9,13 +19,11 @@ function Sidebar({
   onFileRemove,
   onOpenFromSystem,
   visible
-}) {
-
-  const filteredFiles = Array.from(files.values());
+}: SidebarProps) {
+  const filteredFiles = Array.from(files.values())
 
   return (
     <aside className={`${visible ? 'w-[320px]' : 'w-0 min-w-0 overflow-hidden'} bg-white flex flex-col transition-all duration-300 border-r border-gray-200`}>
-      {/* Header */}
       <div className="p-6 border-b border-sage/30 flex-shrink-0 bg-gradient-to-br from-cream/50 to-white">
         <div className="mb-4">
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-3 mb-1">
@@ -46,7 +54,6 @@ function Sidebar({
         </div>
       </div>
 
-      {/* File List */}
       <nav className="flex-1 overflow-y-auto py-2 px-4">
         {filteredFiles.length > 0 ? (
           <div>
@@ -86,8 +93,8 @@ function Sidebar({
                       </span>
                       <button
                         className="p-1.5 hover:bg-crimson/10 text-crimson rounded-md transition-all duration-200 shrink-0 cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation()
+                        onClick={(event) => {
+                          event.stopPropagation()
                           onFileRemove(file.id)
                         }}
                         title="Remove this file"
@@ -98,7 +105,7 @@ function Sidebar({
                     {currentFileId === file.id && headings.length > 0 && (
                       <ul className="list-none pl-10 mt-1 mb-1 space-y-0.5">
                         {headings.map((heading, idx) => (
-                          <li key={idx}>
+                          <li key={`${heading.id}-${idx}`}>
                             <a href={`#${heading.id}`} className="text-gray-600 no-underline text-xs font-medium transition-all duration-200 hover:text-forest hover:bg-sage/20 block py-1.5 px-2.5 rounded-md">{heading.text}</a>
                           </li>
                         ))}
@@ -126,4 +133,3 @@ function Sidebar({
 }
 
 export default Sidebar
-

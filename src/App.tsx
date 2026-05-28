@@ -1,9 +1,6 @@
-import React from 'react'
 import './App.css'
-import toast, { Toaster } from 'react-hot-toast'
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast'
 import MarkdownWrapper from './components/markdown/MarkdownWrapper'
-import CodeEditor from './components/CodeEditor/CodeEditor'
 
 function App() {
   return (
@@ -47,12 +44,7 @@ function App() {
           }
         }}
       />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" exact element={<MarkdownWrapper />} />
-          <Route path="/code-editor" element={<CodeEditor />} />
-        </Routes>
-      </BrowserRouter>
+      <MarkdownWrapper />
     </>
   );
 }

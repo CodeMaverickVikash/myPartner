@@ -1,17 +1,36 @@
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { IoMenu, IoCreate, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink, IoFolderOpen } from 'react-icons/io5'
 import MarkdownViewer from './MarkdownViewer'
 import MarkdownEditor from './MarkdownEditor'
 import WelcomeScreen from './WelcomeScreen'
+import type { MarkdownFile } from '../types'
 
-function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible }) {
+interface ContentProps {
+  file: MarkdownFile | null
+  fileHandle?: FileSystemFileHandle | null
+  onFileUpdate: (fileId: string, content: string) => void
+  onSaveToSystem: (fileId: string) => Promise<void>
+  onToggleSidebar: () => void
+  sidebarVisible: boolean
+}
+
+function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible }: ContentProps) {
   const [isEditMode, setIsEditMode] = useState(false)
   const [editContent, setEditContent] = useState('')
   const [scrollPosition, setScrollPosition] = useState(0)
-  const markdownViewerRef = useRef(null)
+  const markdownViewerRef = useRef<HTMLDivElement | null>(null)
+
+  const restoreScrollPosition = () => {
+    setTimeout(() => {
+      if (markdownViewerRef.current) {
+        markdownViewerRef.current.scrollTop = scrollPosition
+      }
+    }, 0)
+  }
 
   const handleEdit = () => {
-    // Capture current scroll position from viewer
+    if (!file) return
+
     if (markdownViewerRef.current) {
       setScrollPosition(markdownViewerRef.current.scrollTop)
     }
@@ -20,39 +39,26 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
   }
 
   const handleSave = () => {
+    if (!file) return
+
     onFileUpdate(file.id, editContent)
     setIsEditMode(false)
-    // Restore scroll position after state update
-    setTimeout(() => {
-      if (markdownViewerRef.current) {
-        markdownViewerRef.current.scrollTop = scrollPosition
-      }
-    }, 0)
+    restoreScrollPosition()
   }
 
   const handleSaveToSystem = async () => {
-    // First update the file in state
+    if (!file) return
+
     onFileUpdate(file.id, editContent)
-    // Then save to system
     await onSaveToSystem(file.id)
     setIsEditMode(false)
-    // Restore scroll position after state update
-    setTimeout(() => {
-      if (markdownViewerRef.current) {
-        markdownViewerRef.current.scrollTop = scrollPosition
-      }
-    }, 0)
+    restoreScrollPosition()
   }
 
   const handleCancel = () => {
     setIsEditMode(false)
     setEditContent('')
-    // Restore scroll position after state update
-    setTimeout(() => {
-      if (markdownViewerRef.current) {
-        markdownViewerRef.current.scrollTop = scrollPosition
-      }
-    }, 0)
+    restoreScrollPosition()
   }
 
   const scrollToTop = () => {
@@ -61,7 +67,6 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
 
   return (
     <main className="flex-1 flex flex-col bg-white overflow-hidden relative">
-      {/* Sidebar Toggle Button */}
       {!file && (
         <button
           className={`flex items-center justify-center border border-sage cursor-pointer text-forest transition-all duration-200 p-2.5 w-10 h-10 rounded-lg fixed top-4 z-50 bg-white shadow-sm hover:bg-sage/20 hover:border-forest active:scale-95 ${sidebarVisible ? 'left-85' : 'left-4'}`}
@@ -75,7 +80,6 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
       {file ? (
         <>
           <div className="flex justify-between items-center px-10 py-4 bg-gradient-to-r from-cream/30 to-white border-b border-sage/30 gap-4 flex-wrap relative">
-            {/* Sidebar Toggle Button - In Header */}
             <button
               className="flex items-center justify-center cursor-pointer text-forest transition-all duration-200 p-2 w-9 h-9 rounded-lg absolute left-4 top-1/2 -translate-y-1/2 hover:bg-sage/20 active:scale-95 border border-sage"
               onClick={onToggleSidebar}
@@ -166,7 +170,6 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
             <MarkdownViewer content={file.content} markdownViewerRef={markdownViewerRef} />
           )}
 
-          {/* Scroll to Top Button - Only show when file is loaded */}
           <button
             className="fixed bottom-8 right-8 w-12 h-12 bg-forest text-white border-none rounded-lg cursor-pointer flex items-center justify-center shadow-lg transition-all duration-200 z-50 hover:bg-forest/90 hover:shadow-xl active:scale-95"
             onClick={scrollToTop}
@@ -183,4 +186,3 @@ function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSideb
 }
 
 export default Content
-
