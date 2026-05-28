@@ -1,7 +1,9 @@
 import React from 'react'
 import './App.css'
 import toast, { Toaster } from 'react-hot-toast'
-import VSCodeEditor from './components/VSCodeEditor'
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import MarkdownWrapper from './components/markdown/MarkdownWrapper'
+import CodeEditor from './components/CodeEditor/CodeEditor'
 
 function App() {
   return (
@@ -10,28 +12,47 @@ function App() {
         position="bottom-right"
         reverseOrder={false}
         toastOptions={{
-          duration: 2500,
+          // Default options
+          duration: 3000,
           style: {
-            background: '#252526',
-            color: '#d4d4d4',
-            padding: '10px 14px',
-            borderRadius: '6px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-            fontSize: '13px',
-            fontWeight: '500',
-            border: '1px solid #3e3e42',
+            background: '#fff',
+            color: '#374151',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            fontSize: '14px',
+            fontWeight: '500'
           },
+          // Success toast style
           success: {
-            style: { background: '#1a3a2a', color: '#4ec994', border: '1px solid #2d6a4f' },
-            iconTheme: { primary: '#4ec994', secondary: '#1a3a2a' }
+            style: {
+              background: '#10b981',
+              color: '#fff'
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#10b981'
+            }
           },
+          // Error toast style
           error: {
-            style: { background: '#3a1a1a', color: '#f48771', border: '1px solid #6a2d2d' },
-            iconTheme: { primary: '#f48771', secondary: '#3a1a1a' }
+            style: {
+              background: '#ef4444',
+              color: '#fff'
+            },
+            iconTheme: {
+              primary: '#fff',
+              secondary: '#ef4444'
+            }
           }
         }}
       />
-      <VSCodeEditor />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" exact element={<MarkdownWrapper />} />
+          <Route path="/code-editor" element={<CodeEditor />} />
+        </Routes>
+      </BrowserRouter>
     </>
   );
 }
