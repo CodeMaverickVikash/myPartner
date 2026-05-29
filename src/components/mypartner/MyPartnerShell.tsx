@@ -11,6 +11,7 @@ import {
   Zap,
   type LucideIcon
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useInstallPrompt } from '../../hooks/useInstallPrompt'
 
 export type ThemeMode = 'light' | 'dark'
@@ -174,14 +175,12 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
 
           <button
             type="button"
-            onClick={canInstall ? install : undefined}
+            onClick={installed ? undefined : canInstall ? install : () => toast('To install: click the ⊕ icon in your browser\'s address bar, or use browser menu → Install app')}
             disabled={installed}
             className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-6 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
               installed
                 ? 'cursor-default border-forest/30 bg-forest/5 text-forest'
-                : canInstall
-                  ? 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest'
-                  : 'cursor-not-allowed border-line bg-surface-0 text-ink-3 opacity-50'
+                : 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest'
             }`}
           >
             {installed
