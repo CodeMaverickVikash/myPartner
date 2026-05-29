@@ -10,7 +10,6 @@ import {
   type ThemeMode
 } from './components/mypartner/MyPartnerShell'
 import NotesApp from './components/notes/NotesApp'
-import InstallPrompt from './components/pwa/InstallPrompt'
 import OfflineBanner from './components/pwa/OfflineBanner'
 import UpdateAvailableToast from './components/pwa/UpdateAvailableToast'
 
@@ -105,7 +104,6 @@ function App() {
 
   return (
     <>
-      <InstallPrompt />
       <OfflineBanner />
       <UpdateAvailableToast />
       <Toaster
