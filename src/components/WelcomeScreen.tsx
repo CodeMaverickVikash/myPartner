@@ -1,104 +1,93 @@
-import { IoFolder, IoCreate, IoSync, IoBook, IoDocument, IoCode } from 'react-icons/io5'
+import { Folder, PenLine, RefreshCw, BookOpen, FileText, Code } from 'lucide-react'
 
 function WelcomeScreen() {
   return (
-    <div className="flex-1 overflow-y-auto bg-gradient-to-br from-cream/20 to-white relative">
-      <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="flex-1 overflow-y-auto bg-surface-0">
+      <div className="max-w-3xl mx-auto px-8 py-12">
         {/* Hero Section */}
-        <div className="text-center mb-13">
-          <h1 className="text-1xl md:text-3xl mb-4 text-gray-900 font-bold tracking-tight">
+        <div className="mb-10">
+          <h1 className="text-2xl font-bold text-ink-1 tracking-tight mb-1.5">
             Markdown Editor
           </h1>
-          <p className="text-sm text-gray-500 leading-relaxed max-w-xl mx-auto">
-            Open, edit, and preview your markdown files with direct system access
+          <p className="text-sm text-ink-3 leading-relaxed">
+            Open, edit, and preview markdown files with direct system access and live sync.
           </p>
         </div>
 
         {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          <div className="bg-white p-6 rounded-lg border border-sage/40 transition-all duration-200 hover:border-forest hover:shadow-md">
-            <div className="w-12 h-12 bg-forest/20 rounded-lg flex items-center justify-center mb-4">
-              <IoFolder className="w-6 h-6 text-forest" />
+        <div className="grid md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-surface-1 p-5 rounded-lg border border-line transition-all duration-200 hover:border-forest/50 hover:shadow-sm">
+            <div className="w-9 h-9 bg-forest/10 rounded-md flex items-center justify-center mb-3">
+              <Folder className="w-5 h-5 text-forest" />
             </div>
-            <h3 className="text-lg mb-2 text-gray-900 font-semibold">Direct File Access</h3>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              Open files directly from your system with live editing
+            <h3 className="text-sm font-semibold text-ink-1 mb-1">Direct File Access</h3>
+            <p className="text-xs text-ink-3 leading-relaxed">
+              Open files from your system and edit them live
             </p>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-sage/40 transition-all duration-200 hover:border-forest hover:shadow-md">
-            <div className="w-12 h-12 bg-forest/20 rounded-lg flex items-center justify-center mb-4">
-              <IoCreate className="w-6 h-6 text-forest" />
+          <div className="bg-surface-1 p-5 rounded-lg border border-line transition-all duration-200 hover:border-forest/50 hover:shadow-sm">
+            <div className="w-9 h-9 bg-forest/10 rounded-md flex items-center justify-center mb-3">
+              <PenLine className="w-5 h-5 text-forest" />
             </div>
-            <h3 className="text-lg mb-2 text-gray-900 font-semibold">Split View Editing</h3>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              Edit markdown with real-time preview side by side
+            <h3 className="text-sm font-semibold text-ink-1 mb-1">Visual Editing</h3>
+            <p className="text-xs text-ink-3 leading-relaxed">
+              Edit with a rich toolbar — no markdown syntax needed
             </p>
           </div>
 
-          <div className="bg-white p-6 rounded-lg border border-sage/40 transition-all duration-200 hover:border-forest hover:shadow-md">
-            <div className="w-12 h-12 bg-forest/20 rounded-lg flex items-center justify-center mb-4">
-              <IoSync className="w-6 h-6 text-forest" />
+          <div className="bg-surface-1 p-5 rounded-lg border border-line transition-all duration-200 hover:border-forest/50 hover:shadow-sm">
+            <div className="w-9 h-9 bg-forest/10 rounded-md flex items-center justify-center mb-3">
+              <RefreshCw className="w-5 h-5 text-forest" />
             </div>
-            <h3 className="text-lg mb-2 text-gray-900 font-semibold">Auto-Sync</h3>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              Changes from external editors sync automatically
+            <h3 className="text-sm font-semibold text-ink-1 mb-1">Auto-Sync</h3>
+            <p className="text-xs text-ink-3 leading-relaxed">
+              External editor changes reload automatically
             </p>
           </div>
         </div>
 
         {/* Additional Features */}
-        <div className="bg-white rounded-lg border border-sage/40 p-8">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">Key Features</h2>
-            <p className="text-gray-600 text-sm">Everything you need for markdown documentation</p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="flex gap-4">
-              <div className="shrink-0">
-                <div className="w-10 h-10 bg-forest/20 rounded-lg flex items-center justify-center">
-                  <IoCode className="w-5 h-5 text-forest" />
-                </div>
+        <div className="bg-surface-1 rounded-lg border border-line p-6">
+          <h2 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-4">Also included</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="flex gap-3 items-start">
+              <div className="w-7 h-7 bg-forest/10 rounded-md flex items-center justify-center shrink-0 mt-0.5">
+                <Code className="w-4 h-4 text-forest" />
               </div>
               <div>
-                <h4 className="font-medium text-gray-900 mb-1">Syntax Highlighting</h4>
-                <p className="text-sm text-gray-600 leading-relaxed">Beautiful code blocks with highlight.js support</p>
+                <h4 className="text-sm font-medium text-ink-1 mb-0.5">Syntax Highlighting</h4>
+                <p className="text-xs text-ink-3 leading-relaxed">Code blocks via highlight.js</p>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <div className="shrink-0">
-                <div className="w-10 h-10 bg-forest/20 rounded-lg flex items-center justify-center">
-                  <IoDocument className="w-5 h-5 text-forest" />
-                </div>
+            <div className="flex gap-3 items-start">
+              <div className="w-7 h-7 bg-forest/10 rounded-md flex items-center justify-center shrink-0 mt-0.5">
+                <FileText className="w-4 h-4 text-forest" />
               </div>
               <div>
-                <h4 className="font-medium text-gray-900 mb-1">Multiple Files</h4>
-                <p className="text-sm text-gray-600 leading-relaxed">Manage and switch between multiple files</p>
+                <h4 className="text-sm font-medium text-ink-1 mb-0.5">Multiple Files</h4>
+                <p className="text-xs text-ink-3 leading-relaxed">Manage and switch between files</p>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <div className="shrink-0">
-                <div className="w-10 h-10 bg-forest/20 rounded-lg flex items-center justify-center">
-                  <IoBook className="w-5 h-5 text-forest" />
-                </div>
+            <div className="flex gap-3 items-start">
+              <div className="w-7 h-7 bg-forest/10 rounded-md flex items-center justify-center shrink-0 mt-0.5">
+                <BookOpen className="w-4 h-4 text-forest" />
               </div>
               <div>
-                <h4 className="font-medium text-gray-900 mb-1">Table of Contents</h4>
-                <p className="text-sm text-gray-600 leading-relaxed">Auto-generated navigation from headings</p>
+                <h4 className="text-sm font-medium text-ink-1 mb-0.5">Table of Contents</h4>
+                <p className="text-xs text-ink-3 leading-relaxed">Auto-generated from headings</p>
               </div>
             </div>
 
-            <div className="flex gap-4">
-              <div className="shrink-0">
-                <div className="w-10 h-10 bg-forest/20 rounded-lg flex items-center justify-center">
-                  <IoSync className="w-5 h-5 text-forest" />
-                </div>
+            <div className="flex gap-3 items-start">
+              <div className="w-7 h-7 bg-forest/10 rounded-md flex items-center justify-center shrink-0 mt-0.5">
+                <RefreshCw className="w-4 h-4 text-forest" />
               </div>
               <div>
-                <h4 className="font-medium text-gray-900 mb-1">Live Sync</h4>
-                <p className="text-sm text-gray-600 leading-relaxed">Files sync automatically with external changes</p>
+                <h4 className="text-sm font-medium text-ink-1 mb-0.5">Live Sync</h4>
+                <p className="text-xs text-ink-3 leading-relaxed">Polls for external file changes</p>
               </div>
             </div>
           </div>

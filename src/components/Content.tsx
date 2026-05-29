@@ -1,185 +1,181 @@
-import { useRef, useState } from 'react'
-import { IoMenu, IoCreate, IoSave, IoClose, IoChevronUp, IoDocument, IoCheckmarkCircle, IoLink, IoFolderOpen } from 'react-icons/io5'
+import { useEffect, useRef, useState } from 'react'
+import { Menu, ChevronUp, FileText, Link, FolderOpen, Maximize2, Minimize2, Save } from 'lucide-react'
 import MarkdownViewer from './MarkdownViewer'
-import MarkdownEditor from './MarkdownEditor'
-import WelcomeScreen from './WelcomeScreen'
 import type { MarkdownFile } from '../types'
 
 interface ContentProps {
   file: MarkdownFile | null
   fileHandle?: FileSystemFileHandle | null
   onFileUpdate: (fileId: string, content: string) => void
-  onSaveToSystem: (fileId: string) => Promise<void>
+  onSaveToSystem: (fileId: string, content?: string) => Promise<void>
   onToggleSidebar: () => void
   sidebarVisible: boolean
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
-function Content({ file, fileHandle, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible }: ContentProps) {
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [editContent, setEditContent] = useState('')
+function Content({ file, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarVisible, onDirtyChange }: ContentProps) {
   const [scrollPosition, setScrollPosition] = useState(0)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
+  const mainRef = useRef<HTMLElement | null>(null)
   const markdownViewerRef = useRef<HTMLDivElement | null>(null)
+  const latestContentRef = useRef('')
+  const saveRef = useRef<() => Promise<void>>(() => Promise.resolve())
 
-  const restoreScrollPosition = () => {
-    setTimeout(() => {
-      if (markdownViewerRef.current) {
-        markdownViewerRef.current.scrollTop = scrollPosition
+  // Sync ref when external content arrives (file watcher, initial load)
+  useEffect(() => {
+    latestContentRef.current = file?.content ?? ''
+  }, [file?.content])
+
+  // Reset dirty state when switching files
+  useEffect(() => {
+    setIsDirty(false)
+  }, [file?.id])
+
+  // Notify parent of dirty state
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  // Ctrl+S save
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        saveRef.current()
       }
-    }, 0)
-  }
-
-  const handleEdit = () => {
-    if (!file) return
-
-    if (markdownViewerRef.current) {
-      setScrollPosition(markdownViewerRef.current.scrollTop)
     }
-    setEditContent(file.content)
-    setIsEditMode(true)
-  }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
-  const handleSave = () => {
-    if (!file) return
-
-    onFileUpdate(file.id, editContent)
-    setIsEditMode(false)
-    restoreScrollPosition()
-  }
-
-  const handleSaveToSystem = async () => {
-    if (!file) return
-
-    onFileUpdate(file.id, editContent)
-    await onSaveToSystem(file.id)
-    setIsEditMode(false)
-    restoreScrollPosition()
-  }
-
-  const handleCancel = () => {
-    setIsEditMode(false)
-    setEditContent('')
-    restoreScrollPosition()
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      mainRef.current?.requestFullscreen()
+    } else {
+      document.exitFullscreen()
+    }
   }
 
   const scrollToTop = () => {
     markdownViewerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // No longer auto-saves — just tracks the latest content and marks dirty
+  const handleInlineChange = (content: string) => {
+    if (!file) return
+    latestContentRef.current = content
+    setScrollPosition(markdownViewerRef.current?.scrollTop ?? 0)
+    setIsDirty(true)
+  }
+
+  const handleSave = async () => {
+    if (!file || !isDirty) return
+    const content = latestContentRef.current
+    if (file.isSystemFile) {
+      await onSaveToSystem(file.id, content)
+    } else {
+      onFileUpdate(file.id, content)
+    }
+    setIsDirty(false)
+    setTimeout(() => {
+      if (markdownViewerRef.current) markdownViewerRef.current.scrollTop = scrollPosition
+    }, 0)
+  }
+  saveRef.current = handleSave
+
   return (
-    <main className="flex-1 flex flex-col bg-white overflow-hidden relative">
-      {!file && (
+    <main ref={mainRef} className="flex-1 flex flex-col bg-surface-1 overflow-hidden relative">
+      {/* Toolbar */}
+      <div className="flex items-center px-3 py-1.5 bg-surface-2 border-b border-line gap-2 flex-wrap shrink-0">
         <button
-          className={`flex items-center justify-center border border-sage cursor-pointer text-forest transition-all duration-200 p-2.5 w-10 h-10 rounded-lg fixed top-4 z-50 bg-white shadow-sm hover:bg-sage/20 hover:border-forest active:scale-95 ${sidebarVisible ? 'left-85' : 'left-4'}`}
+          className="flex items-center justify-center cursor-pointer text-ink-2 transition-all duration-200 p-1.5 w-8 h-8 rounded-md hover:bg-surface-1 hover:text-forest active:scale-95 border border-line shrink-0"
           onClick={onToggleSidebar}
           title={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
         >
-          <IoMenu className="w-5 h-5" />
+          <Menu className="w-4 h-4" />
         </button>
-      )}
 
-      {file ? (
-        <>
-          <div className="flex justify-between items-center px-10 py-4 bg-gradient-to-r from-cream/30 to-white border-b border-sage/30 gap-4 flex-wrap relative">
-            <button
-              className="flex items-center justify-center cursor-pointer text-forest transition-all duration-200 p-2 w-9 h-9 rounded-lg absolute left-4 top-1/2 -translate-y-1/2 hover:bg-sage/20 active:scale-95 border border-sage"
-              onClick={onToggleSidebar}
-              title={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
-            >
-              <IoMenu className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2.5 ml-12">
-              <div className="w-8 h-8 bg-forest rounded-lg flex items-center justify-center shrink-0">
-                <IoDocument className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-semibold text-gray-900">{file.name}</span>
-                  {file.isSystemFile && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-forest/20 text-forest text-xs font-medium rounded-md" title="Linked to system file - changes save directly">
-                      <IoLink className="w-3.5 h-3.5" />
-                      System File
-                    </span>
-                  )}
-                </div>
-                {file.filePath && (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                    <IoFolderOpen className="w-3.5 h-3.5" />
-                    <span
-                      className="truncate max-w-md"
-                      title={`File: ${file.filePath}\n\nNote: Full absolute path is not available due to browser security restrictions. This shows the filename only.`}
-                    >
-                      {file.filePath}
-                    </span>
-                  </div>
+        {file && (
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <FileText className="w-4 h-4 text-ink-3 shrink-0" />
+            <div className="flex flex-col gap-0 flex-1 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-semibold text-ink-1 truncate">{file.name}</span>
+                {isDirty && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Unsaved changes" />
+                )}
+                {file.isSystemFile && !isDirty && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-forest/15 text-forest text-xs font-medium rounded shrink-0" title="Linked to system file — changes save directly">
+                    <Link className="w-3 h-3" />
+                    Synced
+                  </span>
                 )}
               </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {!isEditMode ? (
-                <button
-                  className="px-4 py-2 bg-forest text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-forest/90 active:scale-95 flex items-center gap-2 shadow-sm"
-                  onClick={handleEdit}
-                  title="Edit markdown"
-                >
-                  <IoCreate className="w-4 h-4" />
-                  Edit
-                </button>
-              ) : (
-                <>
-                  {fileHandle ? (
-                    <button
-                      className="px-4 py-2 bg-forest text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-forest/90 active:scale-95 flex items-center gap-2 shadow-sm"
-                      onClick={handleSaveToSystem}
-                      title="Save directly to system file"
-                    >
-                      <IoCheckmarkCircle className="w-4 h-4" />
-                      Save to System
-                    </button>
-                  ) : (
-                    <button
-                      className="px-4 py-2 bg-forest text-white border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-forest/90 active:scale-95 flex items-center gap-2 shadow-sm"
-                      onClick={handleSave}
-                      title="Save changes"
-                    >
-                      <IoSave className="w-4 h-4" />
-                      Save
-                    </button>
-                  )}
-                  <button
-                    className="px-4 py-2 bg-sage/40 text-gray-700 border-none rounded-lg cursor-pointer text-sm font-medium transition-all duration-200 hover:bg-sage/60 active:scale-95 flex items-center gap-2"
-                    onClick={handleCancel}
-                    title="Cancel editing"
-                  >
-                    <IoClose className="w-4 h-4" />
-                    Cancel
-                  </button>
-                </>
+              {file.filePath && (
+                <div className="flex items-center gap-1 text-xs text-ink-3">
+                  <FolderOpen className="w-3 h-3 shrink-0" />
+                  <span className="truncate max-w-xs" title={file.filePath}>{file.filePath}</span>
+                </div>
               )}
             </div>
           </div>
+        )}
 
-          {isEditMode ? (
-            <MarkdownEditor
-              content={editContent}
-              onChange={setEditContent}
-              initialScrollPosition={scrollPosition}
-              onScrollChange={setScrollPosition}
-            />
-          ) : (
-            <MarkdownViewer content={file.content} markdownViewerRef={markdownViewerRef} />
-          )}
+        {file && (
+          <button
+            onClick={handleSave}
+            disabled={!isDirty}
+            title={isDirty ? 'Save changes (Ctrl+S)' : 'No unsaved changes'}
+            className={`flex items-center justify-center p-1.5 w-8 h-8 rounded-md border transition-all duration-200 shrink-0 ${
+              isDirty
+                ? 'cursor-pointer text-forest border-forest/40 hover:bg-forest/10 active:scale-95'
+                : 'cursor-default text-ink-3 border-line opacity-40'
+            }`}
+          >
+            <Save className="w-4 h-4" />
+          </button>
+        )}
+
+        <button
+          className="flex items-center justify-center cursor-pointer text-ink-2 transition-all duration-200 p-1.5 w-8 h-8 rounded-md hover:bg-surface-1 hover:text-forest active:scale-95 border border-line shrink-0"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {file ? (
+        <>
+          <MarkdownViewer
+            content={file.content}
+            markdownViewerRef={markdownViewerRef}
+            onContentChange={handleInlineChange}
+          />
 
           <button
-            className="fixed bottom-8 right-8 w-12 h-12 bg-forest text-white border-none rounded-lg cursor-pointer flex items-center justify-center shadow-lg transition-all duration-200 z-50 hover:bg-forest/90 hover:shadow-xl active:scale-95"
+            className="fixed bottom-6 right-6 w-9 h-9 bg-surface-2 text-ink-2 border border-line rounded-lg cursor-pointer flex items-center justify-center shadow-sm transition-all duration-200 z-50 hover:bg-forest hover:text-white hover:border-forest active:scale-95"
             onClick={scrollToTop}
             title="Scroll to top"
           >
-            <IoChevronUp className="w-6 h-6" />
+            <ChevronUp className="w-4 h-4" />
           </button>
         </>
       ) : (
-        <WelcomeScreen />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8">
+          <div className="w-12 h-12 rounded-xl bg-surface-2 border border-line flex items-center justify-center">
+            <FolderOpen className="w-6 h-6 text-ink-3" />
+          </div>
+          <p className="text-sm font-medium text-ink-2">No file open</p>
+          <p className="text-xs text-ink-3">Click <strong className="text-ink-2">Open File</strong> in the sidebar to begin</p>
+        </div>
       )}
     </main>
   )

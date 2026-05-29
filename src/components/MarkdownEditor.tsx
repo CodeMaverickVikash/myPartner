@@ -1,45 +1,98 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
-import type { IconType } from 'react-icons'
 import {
-  IoText,
-  IoCode,
-  IoList,
-  IoLink,
-  IoImage,
-  IoArrowUndo,
-  IoArrowRedo,
-  IoEllipsisVertical,
-  IoCheckboxOutline,
-  IoRemoveOutline,
-  IoGridOutline,
-  IoChatboxOutline,
-  IoTerminalOutline,
-  IoChevronDown
-} from 'react-icons/io5'
-import { parseMarkdown } from '../utils/markdown'
+  Undo2,
+  Redo2,
+  Code,
+  Image,
+  Link,
+  List,
+  ListOrdered,
+  Ellipsis,
+  SquareCheck,
+  Minus,
+  Table2,
+  Quote,
+  Code2,
+  ChevronDown,
+  Strikethrough,
+  type LucideIcon
+} from 'lucide-react'
 
 interface MarkdownEditorProps {
   content: string
   onChange: (content: string) => void
   initialScrollPosition?: number
   onScrollChange?: (scrollTop: number) => void
+  initialCursorPosition?: number
 }
 
-interface ToolbarButton {
-  icon: IconType
+interface ToolbarItem {
+  type: 'icon' | 'text'
+  icon?: LucideIcon
+  text?: string
+  textClass?: string
   label: string
   action: () => void
   disabled?: boolean
 }
 
-function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScrollChange }: MarkdownEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const previewRef = useRef<HTMLDivElement | null>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const [editorWidth, setEditorWidth] = useState(50)
-  const [isResizing, setIsResizing] = useState(false)
+function getCaretOffset(element: HTMLElement): number {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return 0
+  const range = sel.getRangeAt(0)
+  const pre = range.cloneRange()
+  pre.selectNodeContents(element)
+  pre.setEnd(range.endContainer, range.endOffset)
+  return pre.toString().length
+}
+
+function getSelectionOffsets(element: HTMLElement): [number, number] {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount) return [0, 0]
+  const range = sel.getRangeAt(0)
+
+  const startRange = range.cloneRange()
+  startRange.selectNodeContents(element)
+  startRange.setEnd(range.startContainer, range.startOffset)
+  const start = startRange.toString().length
+
+  const endRange = range.cloneRange()
+  endRange.selectNodeContents(element)
+  endRange.setEnd(range.endContainer, range.endOffset)
+  const end = endRange.toString().length
+
+  return [start, end]
+}
+
+function setCaretOffset(element: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  let remaining = offset
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const len = node.length
+    if (remaining <= len) {
+      const range = document.createRange()
+      range.setStart(node, remaining)
+      range.collapse(true)
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(range)
+      return
+    }
+    remaining -= len
+    node = walker.nextNode() as Text | null
+  }
+  const range = document.createRange()
+  range.selectNodeContents(element)
+  range.collapse(false)
+  window.getSelection()?.removeAllRanges()
+  window.getSelection()?.addRange(range)
+}
+
+function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScrollChange, initialCursorPosition = 0 }: MarkdownEditorProps) {
+  const editorRef = useRef<HTMLDivElement | null>(null)
   const scrollRestored = useRef(false)
+  const internalContent = useRef('')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -48,10 +101,37 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
   const isUndoRedoAction = useRef(false)
 
   useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (internalContent.current === content) return
+
+    internalContent.current = content
+    const offset = getCaretOffset(editor)
+    editor.textContent = content
+    setCaretOffset(editor, Math.min(offset, content.length))
+  }, [content])
+
+  useEffect(() => {
+    if (editorRef.current && initialScrollPosition > 0 && !scrollRestored.current) {
+      editorRef.current.scrollTop = initialScrollPosition
+      scrollRestored.current = true
+    }
+  }, [initialScrollPosition])
+
+  useEffect(() => {
+    setTimeout(() => {
+      const ed = editorRef.current
+      if (!ed) return
+      ed.focus()
+      setCaretOffset(ed, Math.min(initialCursorPosition, ed.textContent?.length ?? 0))
+    }, 20)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     if (!isUndoRedoAction.current && content !== history[historyIndex]) {
       const newHistory = history.slice(0, historyIndex + 1)
       newHistory.push(content)
-
       if (newHistory.length > 50) {
         newHistory.shift()
       } else {
@@ -62,20 +142,20 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
     isUndoRedoAction.current = false
   }, [content, history, historyIndex])
 
-  useEffect(() => {
-    if (textareaRef.current && initialScrollPosition > 0 && !scrollRestored.current) {
-      textareaRef.current.scrollTop = initialScrollPosition
-      scrollRestored.current = true
-    }
-  }, [initialScrollPosition])
+  const handleInput = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const text = editor.innerText
+    internalContent.current = text
+    onChange(text)
+  }
 
   const insertMarkdown = (before: string, after = '', placeholder = '') => {
-    const textarea = textareaRef.current
-    if (!textarea) return
+    const editor = editorRef.current
+    if (!editor) return
 
-    const currentScrollTop = textarea.scrollTop
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
+    const currentScrollTop = editor.scrollTop
+    const [start, end] = getSelectionOffsets(editor)
     const selectedText = content.substring(start, end)
     const textToInsert = selectedText || placeholder
 
@@ -86,15 +166,17 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
 
     const newCursorPos = start + before.length + textToInsert.length
 
+    internalContent.current = newText
     onChange(newText)
 
     setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos)
-        textareaRef.current.scrollTop = currentScrollTop
-      }
-    }, 10)
+      const ed = editorRef.current
+      if (!ed) return
+      ed.focus()
+      ed.textContent = newText
+      setCaretOffset(ed, newCursorPos)
+      ed.scrollTop = currentScrollTop
+    }, 0)
   }
 
   const insertTable = () => {
@@ -107,7 +189,7 @@ function MarkdownEditor({ content, onChange, initialScrollPosition = 0, onScroll
 
   const insertTaskList = () => insertMarkdown('- [ ] ', '', 'Task item')
   const insertBlockquote = () => insertMarkdown('> ', '', 'Quote text')
-  const insertCodeBlock = (language = '') => insertMarkdown(`\`\`\`${language}\n`, '\n\`\`\`', 'code here')
+  const insertCodeBlock = () => insertMarkdown('```\n', '\n```', 'code here')
   const insertHorizontalRule = () => insertMarkdown('\n---\n', '', '')
   const insertStrikethrough = () => insertMarkdown('~~', '~~', 'strikethrough text')
   const insertFootnote = () => insertMarkdown('[^1]', '', '')
@@ -121,179 +203,154 @@ Content goes here
     insertMarkdown('', '', template)
   }
 
-  const handleEditorScroll = () => {
-    if (!textareaRef.current || !previewRef.current) return
-
-    const textarea = textareaRef.current
-    const preview = previewRef.current
-    const maxEditorScroll = textarea.scrollHeight - textarea.clientHeight
-    const maxPreviewScroll = preview.scrollHeight - preview.clientHeight
-    const scrollPercentage = maxEditorScroll > 0 ? textarea.scrollTop / maxEditorScroll : 0
-
-    preview.scrollTop = scrollPercentage * maxPreviewScroll
-    onScrollChange?.(textarea.scrollTop)
-  }
-
-  const handleMouseDown = () => {
-    setIsResizing(true)
-  }
-
-  const handleMouseMove = (event: MouseEvent) => {
-    if (!containerRef.current) return
-
-    const containerRect = containerRef.current.getBoundingClientRect()
-    const newWidth = ((event.clientX - containerRect.left) / containerRect.width) * 100
-
-    if (newWidth >= 20 && newWidth <= 80) {
-      setEditorWidth(newWidth)
-    }
-  }
-
-  const handleMouseUp = () => {
-    setIsResizing(false)
-  }
-
-  useEffect(() => {
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isResizing])
-
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && event.target instanceof Node && !menuRef.current.contains(event.target)) {
         setIsMenuOpen(false)
       }
     }
-
     if (isMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside)
     }
-
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isMenuOpen])
 
   const handleUndo = () => {
-    if (historyIndex > 0) {
-      isUndoRedoAction.current = true
-      const currentScrollTop = textareaRef.current?.scrollTop ?? 0
-      const currentSelectionStart = textareaRef.current?.selectionStart ?? 0
-      const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0
-      const newIndex = historyIndex - 1
-      setHistoryIndex(newIndex)
-      onChange(history[newIndex])
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-          textareaRef.current.scrollTop = currentScrollTop
-          const maxLength = textareaRef.current.value.length
-          const safeStart = Math.min(currentSelectionStart, maxLength)
-          const safeEnd = Math.min(currentSelectionEnd, maxLength)
-          textareaRef.current.setSelectionRange(safeStart, safeEnd)
-        }
-      }, 10)
-    }
+    if (historyIndex <= 0) return
+    isUndoRedoAction.current = true
+    const newIndex = historyIndex - 1
+    setHistoryIndex(newIndex)
+    const restored = history[newIndex]
+    internalContent.current = restored
+    onChange(restored)
+    setTimeout(() => {
+      const ed = editorRef.current
+      if (!ed) return
+      ed.focus()
+      ed.textContent = restored
+      setCaretOffset(ed, restored.length)
+    }, 0)
   }
 
   const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      isUndoRedoAction.current = true
-      const currentScrollTop = textareaRef.current?.scrollTop ?? 0
-      const currentSelectionStart = textareaRef.current?.selectionStart ?? 0
-      const currentSelectionEnd = textareaRef.current?.selectionEnd ?? 0
-      const newIndex = historyIndex + 1
-      setHistoryIndex(newIndex)
-      onChange(history[newIndex])
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-          textareaRef.current.scrollTop = currentScrollTop
-          const maxLength = textareaRef.current.value.length
-          const safeStart = Math.min(currentSelectionStart, maxLength)
-          const safeEnd = Math.min(currentSelectionEnd, maxLength)
-          textareaRef.current.setSelectionRange(safeStart, safeEnd)
-        }
-      }, 10)
-    }
+    if (historyIndex >= history.length - 1) return
+    isUndoRedoAction.current = true
+    const newIndex = historyIndex + 1
+    setHistoryIndex(newIndex)
+    const restored = history[newIndex]
+    internalContent.current = restored
+    onChange(restored)
+    setTimeout(() => {
+      const ed = editorRef.current
+      if (!ed) return
+      ed.focus()
+      ed.textContent = restored
+      setCaretOffset(ed, restored.length)
+    }, 0)
   }
 
-  const toolbarButtons: ToolbarButton[] = [
-    { icon: IoArrowUndo, label: 'Undo (Ctrl+Z)', action: handleUndo, disabled: historyIndex <= 0 },
-    { icon: IoArrowRedo, label: 'Redo (Ctrl+Y)', action: handleRedo, disabled: historyIndex >= history.length - 1 },
-    { icon: IoText, label: 'Bold', action: () => insertMarkdown('**', '**', 'bold text') },
-    { icon: IoText, label: 'Italic', action: () => insertMarkdown('*', '*', 'italic text') },
-    { icon: IoText, label: 'Heading', action: () => insertMarkdown('## ', '', 'Heading') },
-    { icon: IoCode, label: 'Code', action: () => insertMarkdown('`', '`', 'code') },
-    { icon: IoList, label: 'Unordered List', action: () => insertMarkdown('- ', '', 'list item') },
-    { icon: IoList, label: 'Ordered List', action: () => insertMarkdown('1. ', '', 'list item') },
-    { icon: IoLink, label: 'Link', action: () => insertMarkdown('[', '](url)', 'link text') },
-    { icon: IoImage, label: 'Image', action: () => insertMarkdown('![', '](url)', 'alt text') }
+  const toolbarGroups: ToolbarItem[][] = [
+    [
+      { type: 'icon', icon: Undo2, label: 'Undo (Ctrl+Z)', action: handleUndo, disabled: historyIndex <= 0 },
+      { type: 'icon', icon: Redo2, label: 'Redo (Ctrl+Y)', action: handleRedo, disabled: historyIndex >= history.length - 1 }
+    ],
+    [
+      { type: 'text', text: 'B', textClass: 'font-bold text-[13px] leading-none', label: 'Bold', action: () => insertMarkdown('**', '**', 'bold text') },
+      { type: 'text', text: 'I', textClass: 'italic text-[13px] leading-none', label: 'Italic', action: () => insertMarkdown('*', '*', 'italic text') }
+    ],
+    [
+      { type: 'text', text: 'Aa', textClass: 'text-base font-semibold leading-none', label: 'Heading 1', action: () => insertMarkdown('# ', '', 'Heading') },
+      { type: 'text', text: 'Aa', textClass: 'text-sm font-semibold leading-none', label: 'Heading 2', action: () => insertMarkdown('## ', '', 'Heading') },
+      { type: 'text', text: 'Aa', textClass: 'text-xs font-semibold leading-none', label: 'Heading 3', action: () => insertMarkdown('### ', '', 'Heading') }
+    ],
+    [
+      { type: 'icon', icon: Code, label: 'Inline Code', action: () => insertMarkdown('`', '`', 'code') }
+    ],
+    [
+      { type: 'icon', icon: List, label: 'Bullet List', action: () => insertMarkdown('- ', '', 'list item') },
+      { type: 'icon', icon: ListOrdered, label: 'Numbered List', action: () => insertMarkdown('1. ', '', 'list item') }
+    ],
+    [
+      { type: 'icon', icon: Link, label: 'Link', action: () => insertMarkdown('[', '](url)', 'link text') },
+      { type: 'icon', icon: Image, label: 'Image', action: () => insertMarkdown('![', '](url)', 'alt text') }
+    ]
   ]
 
-  const menuItems: ToolbarButton[] = [
-    { icon: IoGridOutline, label: 'Table', action: insertTable },
-    { icon: IoCheckboxOutline, label: 'Task List', action: insertTaskList },
-    { icon: IoChatboxOutline, label: 'Blockquote', action: insertBlockquote },
-    { icon: IoTerminalOutline, label: 'Code Block', action: () => insertCodeBlock('') },
-    { icon: IoRemoveOutline, label: 'Horizontal Rule', action: insertHorizontalRule },
-    { icon: IoText, label: 'Strikethrough', action: insertStrikethrough },
-    { icon: IoText, label: 'Footnote', action: insertFootnote },
-    { icon: IoChevronDown, label: 'Collapsible Section', action: insertCollapsible }
+  const menuItems: ToolbarItem[] = [
+    { type: 'icon', icon: Table2, label: 'Table', action: () => { insertTable(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: SquareCheck, label: 'Task List', action: () => { insertTaskList(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: Quote, label: 'Blockquote', action: () => { insertBlockquote(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: Code2, label: 'Code Block', action: () => { insertCodeBlock(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: Minus, label: 'Horizontal Rule', action: () => { insertHorizontalRule(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: Strikethrough, label: 'Strikethrough', action: () => { insertStrikethrough(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: ChevronDown, label: 'Footnote', action: () => { insertFootnote(); setIsMenuOpen(false) } },
+    { type: 'icon', icon: ChevronDown, label: 'Collapsible Section', action: () => { insertCollapsible(); setIsMenuOpen(false) } }
   ]
+
+  const btnBase = 'flex shrink-0 items-center justify-center rounded text-forest transition-colors duration-150 hover:bg-forest/10 active:scale-95'
 
   return (
-    <div className="flex-1 flex flex-col bg-white overflow-hidden">
-      <div className="flex items-center px-4 py-2 border-b border-sage/30 bg-gradient-to-r from-cream/30 to-white shrink-0">
-        <div className="flex items-center gap-1">
-          {toolbarButtons.map((button, index) => (
-            <button
-              key={index}
-              onClick={button.action}
-              disabled={button.disabled}
-              className={`p-2 rounded transition-colors duration-150 ${
-                button.disabled
-                  ? 'opacity-40 cursor-not-allowed'
-                  : 'hover:bg-sage/30'
-              }`}
-              title={button.label}
-              type="button"
-            >
-              <button.icon className="w-4 h-4 text-forest" />
-            </button>
+    <div className="flex-1 flex flex-col bg-surface-1 overflow-hidden animate-fade-in">
+      <div className="flex items-center border-b border-line bg-surface-2 shrink-0">
+        <div className="flex items-center px-3 py-1.5 gap-0.5 overflow-x-auto flex-1 min-w-0">
+          {toolbarGroups.map((group, groupIndex) => (
+            <div key={groupIndex} className="flex items-center gap-0.5 shrink-0">
+              {groupIndex > 0 && (
+                <div className="w-px h-5 bg-line mx-1 shrink-0" />
+              )}
+              {group.map(item => (
+                item.type === 'icon' && item.icon ? (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.action}
+                    disabled={item.disabled}
+                    className={`${btnBase} h-7 w-7 ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    title={item.label}
+                  >
+                    <item.icon className="h-3.5 w-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.action}
+                    disabled={item.disabled}
+                    className={`${btnBase} h-7 min-w-7 px-1.5 ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    title={item.label}
+                  >
+                    <span className={item.textClass}>{item.text}</span>
+                  </button>
+                )
+              ))}
+            </div>
           ))}
         </div>
 
-        <div className="relative" ref={menuRef}>
+        <div className="w-px h-5 bg-line shrink-0" />
+
+        <div className="relative shrink-0 px-1.5 py-1.5" ref={menuRef}>
           <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-2 hover:bg-sage/30 rounded transition-colors duration-150"
-            title="More formatting options"
             type="button"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className={`${btnBase} h-7 w-7`}
+            title="More formatting options"
           >
-            <IoEllipsisVertical className="w-4 h-4 text-forest" />
+            <Ellipsis className="h-3.5 w-3.5" />
           </button>
 
           {isMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-sage rounded-lg shadow-lg z-50 py-1">
-              {menuItems.map((item, index) => (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-surface-1 border border-line rounded-lg shadow-lg z-50 py-1">
+              {menuItems.map((item) => (
                 <button
-                  key={index}
-                  onClick={() => {
-                    item.action()
-                    setIsMenuOpen(false)
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-sage/20 flex items-center gap-3 transition-colors duration-150"
+                  key={item.label}
                   type="button"
+                  onClick={item.action}
+                  className="w-full px-3 py-1.5 text-left text-sm text-ink-2 hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
                 >
-                  <item.icon className="w-4 h-4 text-forest" />
+                  {item.icon && <item.icon className="h-3.5 w-3.5 text-forest shrink-0" />}
                   <span>{item.label}</span>
                 </button>
               ))}
@@ -302,53 +359,34 @@ Content goes here
         </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
-        <div
-          className="flex flex-col border-r border-sage/30"
-          style={{ width: `${editorWidth}%` }}
-        >
-          <div className="px-4 py-2 bg-cream/40 border-b border-sage/30 text-xs font-medium text-forest">
-            EDIT
-          </div>
-          <textarea
-            ref={textareaRef}
-            className="flex-1 p-6 bg-white text-gray-800 border-none font-mono text-[0.95rem] leading-relaxed resize-none outline-none overflow-y-auto"
-            value={content}
-            onChange={(event) => onChange(event.target.value)}
-            onScroll={handleEditorScroll}
-            onKeyDown={(event) => {
-              if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
-                event.preventDefault()
-                handleUndo()
-              }
-              if ((event.ctrlKey && event.key === 'y') || (event.ctrlKey && event.shiftKey && event.key === 'z')) {
-                event.preventDefault()
-                handleRedo()
-              }
-            }}
-            placeholder="Write your markdown here..."
-            spellCheck="false"
-          />
-        </div>
-
-        <div
-          className="w-1 bg-sage/40 hover:bg-forest cursor-col-resize shrink-0 transition-colors duration-150 relative group"
-          onMouseDown={handleMouseDown as (event: ReactMouseEvent<HTMLDivElement>) => void}
-        >
-          <div className="absolute inset-y-0 -left-1 -right-1" />
-        </div>
-
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-4 py-2 bg-cream/40 border-b border-sage/30 text-xs font-medium text-forest">
-            PREVIEW
-          </div>
-          <div
-            ref={previewRef}
-            className="flex-1 p-6 bg-white overflow-y-auto markdown-content"
-            dangerouslySetInnerHTML={{ __html: parseMarkdown(content) }}
-          />
-        </div>
-      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onScroll={() => onScrollChange?.(editorRef.current?.scrollTop ?? 0)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            document.execCommand('insertText', false, '\n')
+          }
+          if (e.key === 'Tab') {
+            e.preventDefault()
+            document.execCommand('insertText', false, '  ')
+          }
+          if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+            e.preventDefault()
+            handleUndo()
+          }
+          if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
+            e.preventDefault()
+            handleRedo()
+          }
+        }}
+        className="markdown-editor flex-1 px-8 py-10 bg-surface-1 text-ink-1 text-[0.95rem] leading-relaxed outline-none overflow-y-auto whitespace-pre-wrap wrap-break-word border-l-2 border-l-forest/20 animate-fade-in"
+        spellCheck={false}
+        data-placeholder="Write your markdown here..."
+      />
     </div>
   )
 }

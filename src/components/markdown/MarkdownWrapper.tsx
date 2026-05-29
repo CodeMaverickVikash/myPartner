@@ -14,10 +14,19 @@ type WatcherMap = Map<string, () => void>
 function MarkdownWrapper() {
   const [files, setFiles] = useState<FileMap>(new Map())
   const [currentFileId, setCurrentFileId] = useState<string | null>(null)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [sidebarVisible, setSidebarVisible] = useState(() => window.innerWidth >= 768)
   const [fileHandles, setFileHandles] = useState<FileHandleMap>(new Map())
   const [fileModifiedTimes, setFileModifiedTimes] = useState<Map<string, number>>(new Map())
   const watchersRef = useRef<WatcherMap>(new Map())
+  const isDirtyRef = useRef(false)
+
+  const handleFileSelect = (newFileId: string) => {
+    if (isDirtyRef.current && newFileId !== currentFileId) {
+      if (!confirm('You have unsaved changes. Discard and switch file?')) return
+      isDirtyRef.current = false
+    }
+    setCurrentFileId(newFileId)
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -187,7 +196,7 @@ function MarkdownWrapper() {
     }
   }
 
-  const handleSaveToSystem = async (fileId: string) => {
+  const handleSaveToSystem = async (fileId: string, contentOverride?: string) => {
     const fileHandle = fileHandles.get(fileId)
     const file = files.get(fileId)
 
@@ -199,7 +208,17 @@ function MarkdownWrapper() {
     }
 
     try {
-      await saveToFileHandle(fileHandle, file.content)
+      const contentToSave = contentOverride ?? file.content
+      await saveToFileHandle(fileHandle, contentToSave)
+
+      if (contentOverride !== undefined && contentOverride !== file.content) {
+        setFiles(new Map(files).set(fileId, {
+          ...file,
+          content: contentOverride,
+          updatedAt: new Date().toISOString()
+        }))
+      }
+
       toast.success(`File "${file.name}" saved successfully!`, {
         duration: 3000,
         icon: 'Saved'
@@ -216,14 +235,15 @@ function MarkdownWrapper() {
   const currentFileHandle = currentFileId ? fileHandles.get(currentFileId) ?? null : null
 
   return (
-    <div className="app-container">
+    <div className="app-container flex min-h-0 flex-1 overflow-hidden">
       <Sidebar
         files={files}
         currentFileId={currentFileId}
-        onFileSelect={setCurrentFileId}
+        onFileSelect={handleFileSelect}
         onFileRemove={handleFileRemove}
         onOpenFromSystem={handleOpenFromSystem}
         visible={sidebarVisible}
+        onClose={() => setSidebarVisible(false)}
       />
       <Content
         file={currentFile}
@@ -232,6 +252,7 @@ function MarkdownWrapper() {
         onSaveToSystem={handleSaveToSystem}
         onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
         sidebarVisible={sidebarVisible}
+        onDirtyChange={(d) => { isDirtyRef.current = d }}
       />
     </div>
   )
