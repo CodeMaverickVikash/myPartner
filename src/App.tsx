@@ -10,6 +10,8 @@ import {
   type ThemeMode
 } from './components/mypartner/MyPartnerShell'
 import NotesApp from './components/notes/NotesApp'
+import OfflineBanner from './components/pwa/OfflineBanner'
+import UpdateAvailableToast from './components/pwa/UpdateAvailableToast'
 
 const AUTH_KEY = 'mypartner-auth-session'
 const THEME_KEY = 'mypartner-theme'
@@ -102,6 +104,8 @@ function App() {
 
   return (
     <>
+      <OfflineBanner />
+      <UpdateAvailableToast />
       <Toaster
         position="bottom-right"
         reverseOrder={false}

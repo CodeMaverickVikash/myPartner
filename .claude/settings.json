@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -Command \"Write-Output 'Stack file changed -- update CLAUDE.md Tech Stack table and both agent files: .claude/agents/ux-ui-developer-agent.md and .claude/agents/pwa-developer-agent.md'\"",
+            "if": "Edit(*package.json*)|Write(*package.json*)|Edit(*vite.config.ts*)|Write(*vite.config.ts*)",
+            "shell": "powershell",
+            "statusMessage": "Checking stack sync..."
+          }
+        ]
+      }
+    ]
+  }
+}
