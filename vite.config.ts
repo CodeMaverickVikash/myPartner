@@ -9,6 +9,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
+        id: '/',
         name: 'myPartner Portal',
         short_name: 'myPartner',
         description: 'Markdown editor and notes workspace — offline-first, no backend required.',
