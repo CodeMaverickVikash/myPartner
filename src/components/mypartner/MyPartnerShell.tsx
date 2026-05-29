@@ -172,24 +172,23 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
             <ArrowRight className="h-4 w-4" />
           </button>
 
-          {/* Install button — always visible when installable */}
-          {(canInstall || installed) && (
-            <button
-              type="button"
-              onClick={canInstall ? install : undefined}
-              disabled={installed}
-              className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-6 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
-                installed
-                  ? 'cursor-default border-forest/30 bg-forest/5 text-forest'
-                  : 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest'
-              }`}
-            >
-              {installed
-                ? <><CheckCircle2 className="h-4 w-4" /> App installed</>
-                : <><Download className="h-4 w-4" /> Install as App</>
-              }
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={canInstall ? install : undefined}
+            disabled={installed}
+            className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-6 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
+              installed
+                ? 'cursor-default border-forest/30 bg-forest/5 text-forest'
+                : canInstall
+                  ? 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest'
+                  : 'cursor-not-allowed border-line bg-surface-0 text-ink-3 opacity-50'
+            }`}
+          >
+            {installed
+              ? <><CheckCircle2 className="h-4 w-4" /> App installed</>
+              : <><Download className="h-4 w-4" /> Install as App</>
+            }
+          </button>
         </form>
       </div>
     </main>
