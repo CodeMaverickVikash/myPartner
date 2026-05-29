@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { ReactNode, SyntheticEvent } from 'react'
 import {
   ArrowRight,
   BookOpenText,
   CheckCircle2,
+  Download,
   LogOut,
   Moon,
   NotebookTabs,
@@ -11,6 +11,7 @@ import {
   Zap,
   type LucideIcon
 } from 'lucide-react'
+import { useInstallPrompt } from '../../hooks/useInstallPrompt'
 
 export type ThemeMode = 'light' | 'dark'
 export type FeatureId = 'markdown' | 'notes'
@@ -48,7 +49,7 @@ interface FeatureRegistryItem {
 
 export const featureRegistry: FeatureRegistryItem[] = [
   { id: 'markdown', label: 'Markdown', route: '/portal/markdown', icon: BookOpenText },
-  { id: 'notes',    label: 'Notes',    route: '/portal/notes',    icon: NotebookTabs  }
+  { id: 'notes',    label: 'Notes',    route: '/portal/notes',    icon: NotebookTabs },
 ]
 
 function BrandMark() {
@@ -74,10 +75,7 @@ function ThemeButton({ theme, onToggleTheme }: ShellProps) {
       title="Toggle theme"
       aria-label="Toggle theme"
     >
-      {theme === 'dark'
-        ? <Sun className="h-[15px] w-[15px]" />
-        : <Moon className="h-[15px] w-[15px]" />
-      }
+      {theme === 'dark' ? <Sun className="h-[15px] w-[15px]" /> : <Moon className="h-[15px] w-[15px]" />}
     </button>
   )
 }
@@ -90,19 +88,22 @@ const loginFeatures = [
 ]
 
 export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
-  const inputClass = 'mt-1.5 w-full rounded-xl border border-line bg-surface-0 px-4 py-2.5 text-sm text-ink-1 placeholder:text-ink-3 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/20'
+  const { canInstall, installed, install } = useInstallPrompt()
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    const email   = String(formData.get('email')   ?? '').trim()
-    const name    = String(formData.get('name')    ?? '').trim()
-    const company = String(formData.get('company') ?? '').trim()
+  const inputClass =
+    'mt-1.5 w-full rounded-xl border border-line bg-surface-0 px-4 py-2.5 text-sm text-ink-1 placeholder:text-ink-3 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/20'
+
+  const handleSubmit = (e: SyntheticEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const email   = String(fd.get('email')   ?? '').trim()
+    const name    = String(fd.get('name')    ?? '').trim()
+    const company = String(fd.get('company') ?? '').trim()
     onLogin({
       email,
       name:    name    || email.split('@')[0] || 'Partner',
       company: company || 'Workspace',
-      signedInAt: new Date().toISOString()
+      signedInAt: new Date().toISOString(),
     })
   }
 
@@ -131,10 +132,10 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
           </p>
 
           <ul className="mt-8 space-y-3">
-            {loginFeatures.map(feature => (
-              <li key={feature} className="flex items-center gap-3 text-sm text-ink-2">
+            {loginFeatures.map(f => (
+              <li key={f} className="flex items-center gap-3 text-sm text-ink-2">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-forest" />
-                {feature}
+                {f}
               </li>
             ))}
           </ul>
@@ -164,12 +165,31 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
           </div>
 
           <button
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-6 py-3 font-semibold text-white transition hover:bg-forest-strong active:scale-[0.98]"
             type="submit"
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-6 py-3 font-semibold text-white transition hover:opacity-90 active:scale-[0.98]"
           >
             Open portal
             <ArrowRight className="h-4 w-4" />
           </button>
+
+          {/* Install button — always visible when installable */}
+          {(canInstall || installed) && (
+            <button
+              type="button"
+              onClick={canInstall ? install : undefined}
+              disabled={installed}
+              className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-6 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
+                installed
+                  ? 'cursor-default border-forest/30 bg-forest/5 text-forest'
+                  : 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest'
+              }`}
+            >
+              {installed
+                ? <><CheckCircle2 className="h-4 w-4" /> App installed</>
+                : <><Download className="h-4 w-4" /> Install as App</>
+              }
+            </button>
+          )}
         </form>
       </div>
     </main>
@@ -183,18 +203,15 @@ export function MyPartnerPortal({
   theme,
   onLogout,
   onNavigate,
-  onToggleTheme
+  onToggleTheme,
 }: PortalProps) {
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-surface-0 max-lg:h-auto max-lg:min-h-screen">
-
-      {/* Topbar */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface-1 px-4 lg:px-5">
         <BrandMark />
 
         <div className="h-6 w-px shrink-0 bg-line" />
 
-        {/* Feature tabs */}
         <nav className="flex gap-1" aria-label="Features">
           {featureRegistry.map(feature => (
             <button
@@ -213,7 +230,6 @@ export function MyPartnerPortal({
           ))}
         </nav>
 
-        {/* Right side */}
         <div className="ml-auto flex items-center gap-2.5">
           <div className="hidden text-right sm:block">
             <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-3">{session.company}</p>
@@ -233,49 +249,12 @@ export function MyPartnerPortal({
         </div>
       </header>
 
-      {/* Feature workspace */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden [&>.app-container]:flex-1 [&>.app-container]:min-h-0 [&>main]:flex-1 [&>main]:min-h-0" aria-label="Feature workspace">
+      <section
+        className="flex min-h-0 flex-1 flex-col overflow-hidden [&>.app-container]:flex-1 [&>.app-container]:min-h-0 [&>main]:flex-1 [&>main]:min-h-0"
+        aria-label="Feature workspace"
+      >
         {children}
       </section>
     </main>
   )
 }
-
-/* ── UserAvatar (unused but kept for future use) ── */
-export function UserAvatar({ name }: { name: string }) {
-  const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-  return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-forest/20 text-xs font-bold text-forest">
-      {initials}
-    </span>
-  )
-}
-
-/* ── Dropdown component (kept for potential reuse) ── */
-function Dropdown({ children, trigger }: { children: ReactNode; trigger: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (ref.current && event.target instanceof Node && !ref.current.contains(event.target)) {
-        setOpen(false)
-      }
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [open])
-
-  return (
-    <div className="relative" ref={ref}>
-      <div onClick={() => setOpen(v => !v)}>{trigger}</div>
-      {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 min-w-44 rounded-xl border border-line bg-surface-1 p-1.5 shadow-xl">
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export { Dropdown }
