@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import Sidebar from '../Sidebar'
-import Content from '../Content'
-import { loadFromLocalStorage, saveToLocalStorage } from '../../utils/storage'
-import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported, watchFile } from '../../utils/fileSystem'
-import { getAllFileHandles, removeFileHandle, saveFileHandle } from '../../utils/indexedDB'
-import type { MarkdownFile } from '../../types'
+import Sidebar from './components/Sidebar'
+import Content from './components/Content'
+import { loadFromLocalStorage, saveToLocalStorage } from './lib/storage'
+import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported, watchFile } from './lib/file-system'
+import { getAllFileHandles, removeFileHandle, saveFileHandle } from './lib/indexed-db'
+import type { MarkdownFile } from './types'
 
 type FileMap = Map<string, MarkdownFile>
 type FileHandleMap = Map<string, FileSystemFileHandle>
 type WatcherMap = Map<string, () => void>
 
-function MarkdownWrapper() {
+function MarkdownWorkspace() {
   const [files, setFiles] = useState<FileMap>(new Map())
   const [currentFileId, setCurrentFileId] = useState<string | null>(null)
   const [sidebarVisible, setSidebarVisible] = useState(() => (
@@ -262,4 +262,4 @@ function MarkdownWrapper() {
   )
 }
 
-export default MarkdownWrapper
+export default MarkdownWorkspace

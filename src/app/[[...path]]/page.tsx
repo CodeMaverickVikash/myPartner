@@ -1,5 +1,5 @@
-import App from '../../App'
+import PortalApp from '@/features/portal/PortalApp'
 
 export default function Page() {
-  return <App />
+  return <PortalApp />
 }

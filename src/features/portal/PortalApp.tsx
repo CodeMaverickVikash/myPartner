@@ -2,18 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { Toaster } from 'react-hot-toast'
-import './App.css'
-import MarkdownWrapper from './components/markdown/MarkdownWrapper'
+import MarkdownWorkspace from '@/features/markdown/MarkdownWorkspace'
 import {
   MyPartnerLogin,
   MyPartnerPortal,
   type AuthSession,
   type FeatureId,
   type ThemeMode
-} from './components/mypartner/MyPartnerShell'
-import NotesApp from './components/notes/NotesApp'
-import OfflineBanner from './components/pwa/OfflineBanner'
-import UpdateAvailableToast from './components/pwa/UpdateAvailableToast'
+} from './components/MyPartnerShell'
+import NotesApp from '@/features/notes/components/NotesApp'
+import OfflineBanner from '@/features/pwa/components/OfflineBanner'
+import UpdateAvailableToast from '@/features/pwa/components/UpdateAvailableToast'
 
 const AUTH_KEY = 'mypartner-auth-session'
 const THEME_KEY = 'mypartner-theme'
@@ -76,7 +75,7 @@ const getActiveFeatureId = (path: string): FeatureId => {
   return 'markdown'
 }
 
-function App() {
+function PortalApp() {
   const [mounted, setMounted] = useState(false)
   const [path, setPath] = useState('/')
   const [session, setSession] = useState<AuthSession | null>(null)
@@ -177,12 +176,12 @@ function App() {
           onNavigate={navigateTo}
           onToggleTheme={toggleTheme}
         >
-          {activeFeatureId === 'markdown' && <MarkdownWrapper />}
-          {activeFeatureId === 'notes' && <NotesApp />}
+          {activeFeatureId === 'markdown' && <MarkdownWorkspace />}
+          {activeFeatureId === 'notes' && <NotesApp ownerEmail={session.email} />}
         </MyPartnerPortal>
       )}
     </>
   )
 }
 
-export default App
+export default PortalApp

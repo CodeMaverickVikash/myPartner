@@ -19,7 +19,7 @@ import {
   Undo2,
   type LucideIcon
 } from 'lucide-react'
-import { parseMarkdown } from '../utils/markdown'
+import { parseMarkdown } from '../lib/markdown'
 
 interface MarkdownViewerProps {
   content: string

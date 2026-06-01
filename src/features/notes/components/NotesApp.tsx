@@ -1,16 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, FileText, Pin, PinOff, Search, Trash2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import type { Note, NoteColor } from '@backend/notes/model'
 
-type NoteColor = 'mint' | 'sky' | 'coral' | 'gold'
-
-interface Note {
-  id: string
-  title: string
-  body: string
-  color: NoteColor
-  pinned: boolean
-  createdAt: string
-  updatedAt: string
+interface NotesAppProps {
+  ownerEmail: string
 }
 
 const STORAGE_KEY = 'markdown-viewer-notes'
@@ -37,11 +31,13 @@ const createNote = (): Note => {
   }
 }
 
-const readStoredNotes = (): Note[] => {
+const getStorageKey = (ownerEmail: string) => `${STORAGE_KEY}:${ownerEmail.toLowerCase()}`
+
+const readStoredNotes = (ownerEmail: string): Note[] => {
   if (typeof window === 'undefined') return []
 
   try {
-    const value = localStorage.getItem(STORAGE_KEY)
+    const value = localStorage.getItem(getStorageKey(ownerEmail))
     if (!value) return []
     const parsed = JSON.parse(value) as Note[]
     return Array.isArray(parsed) ? parsed : []
@@ -52,13 +48,74 @@ const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     .format(new Date(value))
 
-function NotesApp() {
-  const [notes, setNotes] = useState<Note[]>(() => readStoredNotes())
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => readStoredNotes()[0]?.id ?? null)
+async function notesRequest<T>(ownerEmail: string, path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-email': ownerEmail,
+      ...init?.headers,
+    },
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null
+    throw new Error(payload?.error ?? `Notes request failed with ${response.status}`)
+  }
+
+  return response.status === 204 ? undefined as T : await response.json() as T
+}
+
+function NotesApp({ ownerEmail }: NotesAppProps) {
+  const [notes, setNotes] = useState<Note[]>(() => readStoredNotes(ownerEmail))
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => readStoredNotes(ownerEmail)[0]?.id ?? null)
   const [query, setQuery] = useState('')
   const [mobilePane, setMobilePane] = useState<'list' | 'editor'>('list')
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [remoteEnabled, setRemoteEnabled] = useState(true)
+  const pendingPatchRef = useRef(new Map<string, Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>>())
+  const patchTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(notes)) }, [notes])
+  useEffect(() => {
+    let isCurrent = true
+    setIsLoading(true)
+    setRemoteEnabled(true)
+
+    notesRequest<{ notes: Note[] }>(ownerEmail, '/api/notes')
+      .then(({ notes: remoteNotes }) => {
+        if (!isCurrent) return
+        setNotes(remoteNotes)
+        setActiveNoteId(current => current && remoteNotes.some(note => note.id === current)
+          ? current
+          : remoteNotes[0]?.id ?? null)
+        localStorage.setItem(getStorageKey(ownerEmail), JSON.stringify(remoteNotes))
+      })
+      .catch((error) => {
+        if (!isCurrent) return
+        console.error('Failed to load notes:', error)
+        setRemoteEnabled(false)
+        toast.error(error instanceof Error ? error.message : 'Unable to load notes')
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoading(false)
+      })
+
+    return () => { isCurrent = false }
+  }, [ownerEmail])
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey(ownerEmail), JSON.stringify(notes))
+  }, [notes, ownerEmail])
+
+  useEffect(() => {
+    const patchTimers = patchTimersRef.current
+
+    return () => {
+      patchTimers.forEach(timer => clearTimeout(timer))
+      patchTimers.clear()
+    }
+  }, [])
 
   // Return to list on mobile when no note is active
   useEffect(() => { if (!activeNoteId) setMobilePane('list') }, [activeNoteId])
@@ -77,11 +134,69 @@ function NotesApp() {
 
   const activeNote = notes.find(n => n.id === activeNoteId) ?? null
 
-  const addNote = () => {
-    const note = createNote()
-    setNotes(curr => [note, ...curr])
-    setActiveNoteId(note.id)
+  const addNote = async () => {
+    const temporaryNote = createNote()
+    setNotes(curr => [temporaryNote, ...curr])
+    setActiveNoteId(temporaryNote.id)
     setMobilePane('editor')
+
+    if (!remoteEnabled) return
+
+    try {
+      setIsSaving(true)
+      const { note } = await notesRequest<{ note: Note }>(ownerEmail, '/api/notes', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: temporaryNote.title,
+          body: temporaryNote.body,
+          color: temporaryNote.color,
+          pinned: temporaryNote.pinned,
+        }),
+      })
+      setNotes(curr => curr.map(current => current.id === temporaryNote.id ? note : current))
+      setActiveNoteId(note.id)
+    } catch (error) {
+      console.error('Failed to create note:', error)
+      setRemoteEnabled(false)
+      toast.error(error instanceof Error ? error.message : 'Unable to create note')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const schedulePatch = (noteId: string, updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => {
+    if (!remoteEnabled) return
+
+    const existingUpdates = pendingPatchRef.current.get(noteId) ?? {}
+    pendingPatchRef.current.set(noteId, { ...existingUpdates, ...updates })
+
+    const existingTimer = patchTimersRef.current.get(noteId)
+    if (existingTimer) clearTimeout(existingTimer)
+
+    const timer = setTimeout(() => {
+      const nextUpdates = pendingPatchRef.current.get(noteId)
+      if (!nextUpdates) return
+
+      pendingPatchRef.current.delete(noteId)
+      patchTimersRef.current.delete(noteId)
+      setIsSaving(true)
+
+      notesRequest<{ note: Note }>(ownerEmail, `/api/notes/${noteId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(nextUpdates),
+      })
+        .then(({ note }) => {
+          setNotes(curr => curr.map(current => current.id === note.id ? note : current))
+        })
+        .catch((error) => {
+          console.error('Failed to update note:', error)
+          setRemoteEnabled(false)
+          toast.error(error instanceof Error ? error.message : 'Unable to update note')
+        })
+        .finally(() => setIsSaving(false))
+    }, 500)
+
+    patchTimersRef.current.set(noteId, timer)
   }
 
   const updateActiveNote = (updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => {
@@ -89,15 +204,34 @@ function NotesApp() {
     setNotes(curr => curr.map(n =>
       n.id === activeNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n
     ))
+    schedulePatch(activeNoteId, updates)
   }
 
-  const deleteActiveNote = () => {
+  const deleteActiveNote = async () => {
     if (!activeNoteId) return
+    const noteId = activeNoteId
+    const previousNotes = notes
+
     setNotes(curr => {
       const next = curr.filter(n => n.id !== activeNoteId)
       setActiveNoteId(next[0]?.id ?? null)
       return next
     })
+
+    if (!remoteEnabled) return
+
+    try {
+      setIsSaving(true)
+      await notesRequest<void>(ownerEmail, `/api/notes/${noteId}`, { method: 'DELETE' })
+    } catch (error) {
+      console.error('Failed to delete note:', error)
+      setRemoteEnabled(false)
+      toast.error(error instanceof Error ? error.message : 'Unable to delete note')
+      setNotes(previousNotes)
+      setActiveNoteId(noteId)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const pinnedNotes   = filteredNotes.filter(n => n.pinned)
@@ -117,7 +251,11 @@ function NotesApp() {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-line shrink-0">
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold text-ink-1 uppercase tracking-wider">Notes</h1>
-            <p className="text-[11px] text-ink-3 mt-0.5">{notes.length} saved</p>
+            <p className="text-[11px] text-ink-3 mt-0.5">
+              {isLoading
+                ? 'Loading...'
+                : `${notes.length} saved${remoteEnabled ? isSaving ? ' - syncing' : '' : ' - local'}`}
+            </p>
           </div>
           <button
             type="button"

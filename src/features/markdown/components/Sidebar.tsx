@@ -1,6 +1,6 @@
 import { BookOpen, FileText, X, FolderOpen, Folder, Link } from 'lucide-react'
-import { extractHeadings } from '../utils/markdown'
-import { isFileSystemAccessSupported } from '../utils/fileSystem'
+import { extractHeadings } from '../lib/markdown'
+import { isFileSystemAccessSupported } from '../lib/file-system'
 import type { MarkdownFile } from '../types'
 
 function displayPath(file: { name: string; filePath?: string }): string {

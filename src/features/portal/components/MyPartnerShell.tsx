@@ -12,7 +12,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useInstallPrompt } from '../../hooks/useInstallPrompt'
+import { useInstallPrompt } from '@/features/pwa/hooks/useInstallPrompt'
 
 export type ThemeMode = 'light' | 'dark'
 export type FeatureId = 'markdown' | 'notes'

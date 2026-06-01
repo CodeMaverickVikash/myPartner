@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Download, X } from 'lucide-react'
-import { useInstallPrompt } from '../../hooks/useInstallPrompt'
+import { useInstallPrompt } from '../hooks/useInstallPrompt'
 
 const DISMISS_KEY = 'mypartner-pwa-install-dismissed'
 

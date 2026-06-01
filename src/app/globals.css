@@ -49,6 +49,12 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+.app-container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
 /* Smooth fade animation */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
