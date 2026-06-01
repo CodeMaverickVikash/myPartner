@@ -1,228 +1,141 @@
+'use client'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Plus, FileText, Pin, PinOff, Search, Trash2 } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowLeft,
+  Clock,
+  FileText,
+  Loader2,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Trash2,
+  Wifi,
+  WifiOff,
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { v4 as uuidv4 } from 'uuid'
-import type { Note, NoteColor } from '@backend/notes/model'
+import type { LocalNote, NoteColor, SyncStatus } from '../types'
+import { deleteNote as idbDelete, getVisibleNotes, saveNote } from '../lib/idb'
+import { pullServerNotes, syncPendingNotes } from '../lib/sync'
 
 interface NotesAppProps {
   ownerEmail: string
 }
 
-type QueuedNoteMutation =
-  | { id: string; type: 'upsert'; note: Note }
-  | { id: string; type: 'delete' }
-
-const STORAGE_PREFIX = 'mypartner-notes'
 const colorOptions: NoteColor[] = ['mint', 'sky', 'coral', 'gold']
+
 const cx = (...classes: Array<string | false | undefined>) => classes.filter(Boolean).join(' ')
 
 const accent: Record<NoteColor, string> = {
-  mint:  '#36a278',
-  sky:   '#3b82f6',
+  mint: '#36a278',
+  sky: '#3b82f6',
   coral: '#f87171',
-  gold:  '#f59e0b',
+  gold: '#f59e0b',
 }
 
 const colorLabel: Record<NoteColor, string> = {
   mint: 'Mint', sky: 'Sky', coral: 'Coral', gold: 'Gold',
 }
 
-const createNote = (): Note => {
-  const now = new Date().toISOString()
-  return {
-    id: uuidv4(),
-    title: '', body: '', color: 'mint', pinned: false,
-    createdAt: now, updatedAt: now,
-  }
-}
-
-const getNotesCacheKey = (ownerEmail: string) => `${STORAGE_PREFIX}:${ownerEmail.toLowerCase()}:cache`
-const getQueueKey = (ownerEmail: string) => `${STORAGE_PREFIX}:${ownerEmail.toLowerCase()}:queue`
-
-const readJson = <T,>(key: string, fallback: T): T => {
-  if (typeof window === 'undefined') return fallback
-
-  try {
-    const value = localStorage.getItem(key)
-    return value ? JSON.parse(value) as T : fallback
-  } catch {
-    return fallback
-  }
-}
-
-const writeJson = (key: string, value: unknown) => {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(key, JSON.stringify(value))
-}
-
-const readCachedNotes = (ownerEmail: string) => readJson<Note[]>(getNotesCacheKey(ownerEmail), [])
-const writeCachedNotes = (ownerEmail: string, notes: Note[]) => writeJson(getNotesCacheKey(ownerEmail), notes)
-const readQueuedMutations = (ownerEmail: string) => readJson<QueuedNoteMutation[]>(getQueueKey(ownerEmail), [])
-const writeQueuedMutations = (ownerEmail: string, mutations: QueuedNoteMutation[]) =>
-  writeJson(getQueueKey(ownerEmail), mutations)
-
-const queueUpsert = (ownerEmail: string, note: Note) => {
-  const mutations = readQueuedMutations(ownerEmail)
-    .filter(mutation => mutation.id !== note.id)
-  writeQueuedMutations(ownerEmail, [...mutations, { id: note.id, type: 'upsert', note }])
-}
-
-const queueDelete = (ownerEmail: string, noteId: string) => {
-  const mutations = readQueuedMutations(ownerEmail)
-  const existing = mutations.find(mutation => mutation.id === noteId)
-  const next = mutations.filter(mutation => mutation.id !== noteId)
-
-  if (existing?.type === 'upsert') {
-    writeQueuedMutations(ownerEmail, next)
-    return
-  }
-
-  writeQueuedMutations(ownerEmail, [...next, { id: noteId, type: 'delete' }])
-}
-
-const isOnline = () => typeof navigator === 'undefined' || navigator.onLine
-
 const formatDate = (value: string) =>
-  new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-    .format(new Date(value))
+  new Intl.DateTimeFormat(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(new Date(value))
 
-async function notesRequest<T>(ownerEmail: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-email': ownerEmail,
-      ...init?.headers,
-    },
-  })
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { error?: string } | null
-    throw new Error(payload?.error ?? `Notes request failed with ${response.status}`)
-  }
-
-  return response.status === 204 ? undefined as T : await response.json() as T
+function SyncBadge({ status }: { status: SyncStatus }) {
+  if (status === 'synced') return null
+  const config = {
+    pending: { icon: <Clock className="h-3 w-3" />, title: 'Pending', className: 'text-ink-3' },
+    syncing: { icon: <Loader2 className="h-3 w-3 animate-spin" />, title: 'Syncing', className: 'text-forest' },
+    failed: { icon: <AlertCircle className="h-3 w-3" />, title: 'Sync failed', className: 'text-crimson' },
+  } as const
+  const { icon, title, className } = config[status]
+  return (
+    <span className={cx('flex items-center shrink-0', className)} title={title}>
+      {icon}
+    </span>
+  )
 }
 
-function NotesApp({ ownerEmail }: NotesAppProps) {
-  const [notes, setNotes] = useState<Note[]>(() => readCachedNotes(ownerEmail))
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => readCachedNotes(ownerEmail)[0]?.id ?? null)
+export default function NotesApp({ ownerEmail }: NotesAppProps) {
+  const [notes, setNotes] = useState<LocalNote[]>([])
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [mobilePane, setMobilePane] = useState<'list' | 'editor'>('list')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isOffline, setIsOffline] = useState(() => !isOnline())
-  const [queuedCount, setQueuedCount] = useState(() => readQueuedMutations(ownerEmail).length)
-  const pendingPatchRef = useRef(new Map<string, Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>>())
-  const patchTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
 
-  useEffect(() => {
-    let isCurrent = true
-    const cachedNotes = readCachedNotes(ownerEmail)
+  // Ref so callbacks can read current notes without being recreated on every render
+  const notesRef = useRef<LocalNote[]>([])
+  notesRef.current = notes
 
-    setNotes(cachedNotes)
-    setActiveNoteId(cachedNotes[0]?.id ?? null)
-    setQueuedCount(readQueuedMutations(ownerEmail).length)
+  // Per-note debounce timers for the sync trigger
+  const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
-    if (!isOnline()) {
-      setIsOffline(true)
-      return () => { isCurrent = false }
-    }
-
-    setIsLoading(true)
-
-    notesRequest<{ notes: Note[] }>(ownerEmail, '/api/notes')
-      .then(({ notes: remoteNotes }) => {
-        if (!isCurrent) return
-        setNotes(remoteNotes)
-        setActiveNoteId(current => current && remoteNotes.some(note => note.id === current)
-          ? current
-          : remoteNotes[0]?.id ?? null)
-        writeCachedNotes(ownerEmail, remoteNotes)
-      })
-      .catch((error) => {
-        if (!isCurrent) return
-        console.error('Failed to load notes:', error)
-        toast.error(error instanceof Error ? error.message : 'Unable to load notes')
-      })
-      .finally(() => {
-        if (isCurrent) setIsLoading(false)
-      })
-
-    return () => { isCurrent = false }
+  const refreshFromIdb = useCallback(async () => {
+    const fresh = await getVisibleNotes(ownerEmail)
+    setNotes(fresh)
+    return fresh
   }, [ownerEmail])
 
-  useEffect(() => {
-    writeCachedNotes(ownerEmail, notes)
-  }, [ownerEmail, notes])
-
-  const flushQueuedMutations = useCallback(async () => {
-    if (!isOnline()) return
-
-    const mutations = readQueuedMutations(ownerEmail)
-    if (mutations.length === 0) return
-
-    setIsSaving(true)
-
+  const runSync = useCallback(async () => {
+    if (!navigator.onLine) return
+    setIsSyncing(true)
     try {
-      for (const mutation of mutations) {
-        if (mutation.type === 'delete') {
-          await notesRequest<void>(ownerEmail, `/api/notes/${mutation.id}`, { method: 'DELETE' })
-        } else {
-          await notesRequest<{ note: Note }>(ownerEmail, '/api/notes', {
-            method: 'POST',
-            body: JSON.stringify(mutation.note),
-          })
-        }
-      }
-
-      writeQueuedMutations(ownerEmail, [])
-      setQueuedCount(0)
-
-      const { notes: remoteNotes } = await notesRequest<{ notes: Note[] }>(ownerEmail, '/api/notes')
-      setNotes(remoteNotes)
-      setActiveNoteId(current => current && remoteNotes.some(note => note.id === current)
-        ? current
-        : remoteNotes[0]?.id ?? null)
-      writeCachedNotes(ownerEmail, remoteNotes)
-      toast.success('Offline changes synced')
-    } catch (error) {
-      console.error('Failed to sync offline notes:', error)
-      setQueuedCount(readQueuedMutations(ownerEmail).length)
-      toast.error(error instanceof Error ? error.message : 'Unable to sync offline notes')
+      await pullServerNotes(ownerEmail)
+      await syncPendingNotes(ownerEmail)
+      await refreshFromIdb()
+    } catch {
+      // Per-note errors are already saved to IDB by syncPendingNotes
     } finally {
-      setIsSaving(false)
+      setIsSyncing(false)
     }
-  }, [ownerEmail])
+  }, [ownerEmail, refreshFromIdb])
 
+  // Initial load: IDB first for instant offline access, then reconcile with the server.
+  useEffect(() => {
+    let cancelled = false
+
+    getVisibleNotes(ownerEmail).then(initial => {
+      if (cancelled) return
+      setNotes(initial)
+      setActiveNoteId(initial[0]?.localId ?? null)
+    })
+
+    if (navigator.onLine && !cancelled) void runSync()
+
+    return () => { cancelled = true }
+  }, [ownerEmail, runSync])
+
+  // Online/offline events
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false)
-      void flushQueuedMutations()
+      void runSync()
     }
     const handleOffline = () => setIsOffline(true)
-
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
-
-    if (isOnline()) void flushQueuedMutations()
-
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [flushQueuedMutations, ownerEmail])
+  }, [runSync])
 
+  // Cleanup debounce timers on unmount
   useEffect(() => {
-    const patchTimers = patchTimersRef.current
-
-    return () => {
-      patchTimers.forEach(timer => clearTimeout(timer))
-      patchTimers.clear()
-    }
+    const timers = syncTimers.current
+    return () => timers.forEach(t => clearTimeout(t))
   }, [])
 
-  // Return to list on mobile when no note is active
+  useEffect(() => {
+    if (activeNoteId && notes.some(note => note.localId === activeNoteId)) return
+    setActiveNoteId(notes[0]?.localId ?? null)
+  }, [activeNoteId, notes])
+
   useEffect(() => { if (!activeNoteId) setMobilePane('list') }, [activeNoteId])
 
   const sortedNotes = useMemo(() =>
@@ -237,149 +150,112 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
     return sortedNotes.filter(n => `${n.title} ${n.body}`.toLowerCase().includes(needle))
   }, [query, sortedNotes])
 
-  const activeNote = notes.find(n => n.id === activeNoteId) ?? null
+  const activeNote = notes.find(n => n.localId === activeNoteId) ?? null
 
-  const addNote = async () => {
-    const draftNote = createNote()
-
-    if (!isOnline()) {
-      setNotes(curr => [draftNote, ...curr])
-      setActiveNoteId(draftNote.id)
-      setMobilePane('editor')
-      queueUpsert(ownerEmail, draftNote)
-      setQueuedCount(readQueuedMutations(ownerEmail).length)
-      return
+  const addNote = useCallback(async () => {
+    const now = new Date().toISOString()
+    const note: LocalNote = {
+      localId: uuidv4(),
+      ownerEmail,
+      title: '',
+      body: '',
+      color: 'mint',
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      syncStatus: 'pending',
+      operation: 'create',
+      version: 1,
     }
-
     try {
-      setIsSaving(true)
-      const { note } = await notesRequest<{ note: Note }>(ownerEmail, '/api/notes', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: draftNote.id,
-          title: draftNote.title,
-          body: draftNote.body,
-          color: draftNote.color,
-          pinned: draftNote.pinned,
-          createdAt: draftNote.createdAt,
-          updatedAt: draftNote.updatedAt,
-        }),
-      })
-      setNotes(curr => [note, ...curr])
-      setActiveNoteId(note.id)
-      setMobilePane('editor')
-    } catch (error) {
-      console.error('Failed to create note:', error)
-      if (!isOnline()) {
-        setNotes(curr => [draftNote, ...curr])
-        setActiveNoteId(draftNote.id)
-        setMobilePane('editor')
-        queueUpsert(ownerEmail, draftNote)
-        setQueuedCount(readQueuedMutations(ownerEmail).length)
-        toast('You are offline. Note will sync when you reconnect.')
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Unable to create note')
-      }
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const schedulePatch = (
-    noteId: string,
-    updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>,
-    noteSnapshot: Note,
-  ) => {
-    if (!isOnline()) {
-      queueUpsert(ownerEmail, noteSnapshot)
-      setQueuedCount(readQueuedMutations(ownerEmail).length)
+      await saveNote(note)
+    } catch {
+      toast.error('Could not save note locally')
       return
     }
+    setNotes(curr => [note, ...curr])
+    setActiveNoteId(note.localId)
+    setMobilePane('editor')
+    void runSync()
+  }, [ownerEmail, runSync])
 
-    const existingUpdates = pendingPatchRef.current.get(noteId) ?? {}
-    pendingPatchRef.current.set(noteId, { ...existingUpdates, ...updates })
+  const updateNote = useCallback((
+    localId: string,
+    updates: Partial<Pick<LocalNote, 'title' | 'body' | 'color' | 'pinned'>>,
+  ) => {
+    const existing = notesRef.current.find(n => n.localId === localId)
+    if (!existing) return
 
-    const existingTimer = patchTimersRef.current.get(noteId)
-    if (existingTimer) clearTimeout(existingTimer)
+    const updated: LocalNote = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'pending',
+      // If we already have a serverId, update it; otherwise this is still a create
+      operation: existing.serverId ? 'update' : 'create',
+      version: existing.version + 1,
+    }
 
-    const timer = setTimeout(() => {
-      const nextUpdates = pendingPatchRef.current.get(noteId)
-      if (!nextUpdates) return
+    setNotes(curr => curr.map(n => n.localId === localId ? updated : n))
+    void saveNote(updated).catch(() => {
+      toast.error('Could not save note locally')
+      void refreshFromIdb()
+    })
 
-      pendingPatchRef.current.delete(noteId)
-      patchTimersRef.current.delete(noteId)
-      setIsSaving(true)
+    // Debounce the network sync so rapid keystrokes don't flood the server
+    const timer = syncTimers.current.get(localId)
+    if (timer) clearTimeout(timer)
+    syncTimers.current.set(localId, setTimeout(() => {
+      syncTimers.current.delete(localId)
+      void runSync()
+    }, 1500))
+  }, [refreshFromIdb, runSync])
 
-      notesRequest<{ note: Note }>(ownerEmail, `/api/notes/${noteId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(nextUpdates),
-      })
-        .then(({ note }) => {
-          setNotes(curr => curr.map(current => current.id === note.id ? note : current))
-        })
-        .catch((error) => {
-          console.error('Failed to update note:', error)
-          if (!isOnline()) {
-            queueUpsert(ownerEmail, noteSnapshot)
-            setQueuedCount(readQueuedMutations(ownerEmail).length)
-            toast('You are offline. Changes will sync when you reconnect.')
-          } else {
-            toast.error(error instanceof Error ? error.message : 'Unable to update note')
-          }
-        })
-        .finally(() => setIsSaving(false))
-    }, 500)
+  const handleDelete = useCallback(async () => {
+    const note = notesRef.current.find(n => n.localId === activeNoteId)
+    if (!note) return
 
-    patchTimersRef.current.set(noteId, timer)
-  }
-
-  const updateActiveNote = (updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => {
-    if (!activeNoteId || !activeNote) return
-    const updatedNote = { ...activeNote, ...updates, updatedAt: new Date().toISOString() }
-
-    setNotes(curr => curr.map(n =>
-      n.id === activeNoteId ? updatedNote : n
-    ))
-    schedulePatch(activeNoteId, updates, updatedNote)
-  }
-
-  const deleteActiveNote = async () => {
-    if (!activeNoteId) return
-    const noteId = activeNoteId
-    const previousNotes = notes
-
+    const localId = note.localId
+    // Optimistically remove from UI
     setNotes(curr => {
-      const next = curr.filter(n => n.id !== activeNoteId)
-      setActiveNoteId(next[0]?.id ?? null)
+      const next = curr.filter(n => n.localId !== localId)
+      setActiveNoteId(next[0]?.localId ?? null)
       return next
     })
 
-    if (!isOnline()) {
-      queueDelete(ownerEmail, noteId)
-      setQueuedCount(readQueuedMutations(ownerEmail).length)
-      return
+    if (!note.serverId) {
+      await idbDelete(localId).catch(() => {
+        toast.error('Could not delete note locally')
+        void refreshFromIdb()
+      })
+    } else {
+      await saveNote({
+        ...note,
+        deletedAt: new Date().toISOString(),
+        syncStatus: 'pending',
+        operation: 'delete',
+      }).catch(() => {
+        toast.error('Could not queue note for deletion')
+        void refreshFromIdb()
+      })
+      void runSync()
     }
+  }, [activeNoteId, refreshFromIdb, runSync])
 
-    try {
-      setIsSaving(true)
-      await notesRequest<void>(ownerEmail, `/api/notes/${noteId}`, { method: 'DELETE' })
-    } catch (error) {
-      console.error('Failed to delete note:', error)
-      if (!isOnline()) {
-        queueDelete(ownerEmail, noteId)
-        setQueuedCount(readQueuedMutations(ownerEmail).length)
-        toast('You are offline. Delete will sync when you reconnect.')
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Unable to delete note')
-        setNotes(previousNotes)
-        setActiveNoteId(noteId)
-      }
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  const pendingCount = notes.filter(n => n.syncStatus === 'pending' || n.syncStatus === 'syncing').length
+  const failedCount = notes.filter(n => n.syncStatus === 'failed').length
 
-  const pinnedNotes   = filteredNotes.filter(n => n.pinned)
+  const statusLabel = isOffline
+    ? 'offline'
+    : isSyncing
+      ? 'syncing...'
+      : failedCount > 0
+        ? `${failedCount} failed`
+        : pendingCount > 0
+          ? `${pendingCount} pending`
+          : 'all synced'
+
+  const pinnedNotes = filteredNotes.filter(n => n.pinned)
   const unpinnedNotes = filteredNotes.filter(n => !n.pinned)
 
   return (
@@ -396,11 +272,12 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
         <div className="flex items-center gap-3 px-4 py-3 border-b border-line shrink-0">
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold text-ink-1 uppercase tracking-wider">Notes</h1>
-            <p className="text-[11px] text-ink-3 mt-0.5">
-              {isLoading
-                ? 'Loading...'
-                : `${notes.length} saved${isOffline ? ' - offline' : isSaving ? ' - syncing' : ''}${queuedCount > 0 ? ` - ${queuedCount} queued` : ''}`}
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {isOffline
+                ? <WifiOff className="h-3 w-3 text-ink-3 shrink-0" />
+                : <Wifi className="h-3 w-3 text-forest shrink-0" />}
+              <p className="text-[11px] text-ink-3">{statusLabel}</p>
+            </div>
           </div>
           <button
             type="button"
@@ -439,7 +316,12 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
                 <>
                   <p className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-3">Pinned</p>
                   {pinnedNotes.map(note => (
-                    <NoteCard key={note.id} note={note} active={note.id === activeNoteId} onClick={() => { setActiveNoteId(note.id); setMobilePane('editor') }} />
+                    <NoteCard
+                      key={note.localId}
+                      note={note}
+                      active={note.localId === activeNoteId}
+                      onClick={() => { setActiveNoteId(note.localId); setMobilePane('editor') }}
+                    />
                   ))}
                 </>
               )}
@@ -449,7 +331,12 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
                     <p className="px-2 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-3">All Notes</p>
                   )}
                   {unpinnedNotes.map(note => (
-                    <NoteCard key={note.id} note={note} active={note.id === activeNoteId} onClick={() => { setActiveNoteId(note.id); setMobilePane('editor') }} />
+                    <NoteCard
+                      key={note.localId}
+                      note={note}
+                      active={note.localId === activeNoteId}
+                      onClick={() => { setActiveNoteId(note.localId); setMobilePane('editor') }}
+                    />
                   ))}
                 </>
               )}
@@ -466,10 +353,10 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
         {activeNote ? (
           <div className="flex min-h-0 flex-1 flex-col">
 
-            {/* Toolbar — matches markdown editor style */}
+            {/* Toolbar */}
             <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5 shrink-0">
 
-              {/* Back button — mobile only */}
+              {/* Back — mobile only */}
               <button
                 type="button"
                 onClick={() => setMobilePane('list')}
@@ -487,7 +374,7 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
                     key={c}
                     type="button"
                     title={colorLabel[c]}
-                    onClick={() => updateActiveNote({ color: c })}
+                    onClick={() => updateNote(activeNote.localId, { color: c })}
                     className="h-3.5 w-3.5 rounded-full transition hover:scale-125 active:scale-95 shrink-0"
                     style={{
                       backgroundColor: accent[c],
@@ -503,11 +390,11 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
               {/* Pin toggle */}
               <button
                 type="button"
-                onClick={() => updateActiveNote({ pinned: !activeNote.pinned })}
+                onClick={() => updateNote(activeNote.localId, { pinned: !activeNote.pinned })}
                 title={activeNote.pinned ? 'Unpin' : 'Pin note'}
                 className={cx(
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded text-forest transition-colors hover:bg-forest/10 active:scale-95',
-                  activeNote.pinned ? 'text-forest' : 'text-ink-3 hover:text-forest'
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-forest/10 active:scale-95',
+                  activeNote.pinned ? 'text-forest' : 'text-ink-3 hover:text-forest',
                 )}
               >
                 {activeNote.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
@@ -516,42 +403,36 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
               {/* Delete */}
               <button
                 type="button"
-                onClick={deleteActiveNote}
+                onClick={handleDelete}
                 title="Delete note"
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 transition-colors hover:bg-crimson/10 hover:text-crimson active:scale-95"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
 
-              <span className="ml-auto text-[11px] text-ink-3 shrink-0">
-                {formatDate(activeNote.updatedAt)}
-              </span>
+              <div className="ml-auto flex items-center gap-2 shrink-0">
+                <SyncBadge status={activeNote.syncStatus} />
+                <span className="text-[11px] text-ink-3">{formatDate(activeNote.updatedAt)}</span>
+              </div>
             </div>
 
-            {/* Writing surface — same structure as markdown editor */}
+            {/* Writing surface */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-1 border-l-2 border-l-forest/20 shadow-[-2px_0_0_0_rgba(0,0,0,0.04)]">
-
-              {/* Title */}
               <input
                 className="w-full shrink-0 border-0 bg-transparent px-8 pb-2 pt-6 text-[1.85rem] font-bold leading-tight text-ink-1 outline-none placeholder:text-ink-3"
                 value={activeNote.title}
-                onChange={e => updateActiveNote({ title: e.target.value })}
+                onChange={e => updateNote(activeNote.localId, { title: e.target.value })}
                 placeholder="Untitled"
                 aria-label="Note title"
               />
-
               <div className="mx-8 h-px shrink-0 bg-line" />
-
-              {/* Body */}
               <textarea
                 className="min-h-0 flex-1 resize-none border-0 bg-transparent px-8 py-5 text-base leading-7 text-ink-1 outline-none placeholder:text-ink-3"
                 value={activeNote.body}
-                onChange={e => updateActiveNote({ body: e.target.value })}
+                onChange={e => updateNote(activeNote.localId, { body: e.target.value })}
                 placeholder="Start writing…"
                 aria-label="Note body"
               />
-
-              {/* Footer */}
               <div className="flex shrink-0 items-center justify-between border-t border-line px-8 py-2">
                 <span className="text-xs text-ink-3">
                   {activeNote.body.trim().split(/\s+/).filter(Boolean).length} words
@@ -588,7 +469,13 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
   )
 }
 
-function NoteCard({ note, active, onClick }: { note: Note; active: boolean; onClick: () => void }) {
+function NoteCard({
+  note, active, onClick,
+}: {
+  note: LocalNote
+  active: boolean
+  onClick: () => void
+}) {
   return (
     <button
       type="button"
@@ -597,7 +484,7 @@ function NoteCard({ note, active, onClick }: { note: Note; active: boolean; onCl
         'group w-full rounded-lg border px-3 py-2.5 text-left transition mb-0.5',
         active
           ? 'border-forest/25 bg-forest/5 shadow-sm'
-          : 'border-transparent hover:border-line hover:bg-surface-2'
+          : 'border-transparent hover:border-line hover:bg-surface-2',
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -611,6 +498,7 @@ function NoteCard({ note, active, onClick }: { note: Note; active: boolean; onCl
               {note.title.trim() || 'Untitled'}
             </span>
             {note.pinned && <Pin className="h-3 w-3 shrink-0 text-forest" />}
+            <SyncBadge status={note.syncStatus} />
           </div>
           <p className="truncate text-xs text-ink-3 leading-snug">
             {note.body.replace(/\s+/g, ' ').trim() || 'No content'}
@@ -621,5 +509,3 @@ function NoteCard({ note, active, onClick }: { note: Note; active: boolean; onCl
     </button>
   )
 }
-
-export default NotesApp

@@ -1,5 +1,5 @@
-import PortalApp from '@/features/portal/PortalApp'
+import ClientRoot from './client'
 
 export default function Page() {
-  return <PortalApp />
+  return <ClientRoot />
 }

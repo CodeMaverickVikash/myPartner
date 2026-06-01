@@ -11,6 +11,7 @@ import {
   type ThemeMode
 } from './components/MyPartnerShell'
 import NotesApp from '@/features/notes/components/NotesApp'
+import InstallPrompt from '@/features/pwa/components/InstallPrompt'
 import OfflineBanner from '@/features/pwa/components/OfflineBanner'
 import UpdateAvailableToast from '@/features/pwa/components/UpdateAvailableToast'
 
@@ -76,39 +77,25 @@ const getActiveFeatureId = (path: string): FeatureId => {
 }
 
 function PortalApp() {
-  const [mounted, setMounted] = useState(false)
-  const [path, setPath] = useState('/')
-  const [session, setSession] = useState<AuthSession | null>(null)
-  const [theme, setTheme] = useState<ThemeMode>('light')
+  const [path, setPath] = useState(getPath)
+  const [session, setSession] = useState<AuthSession | null>(readSession)
+  const [theme, setTheme] = useState<ThemeMode>(readTheme)
 
   useEffect(() => {
-    setPath(getPath())
-    setSession(readSession())
-    setTheme(readTheme())
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!mounted) return
-
     const handlePopState = () => setPath(getPath())
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [mounted])
+  }, [])
 
   useEffect(() => {
-    if (!mounted) return
-
     document.documentElement.dataset.theme = theme
     localStorage.setItem(THEME_KEY, theme)
-  }, [mounted, theme])
+  }, [theme])
 
   useEffect(() => {
-    if (!mounted) return
-
     const redirectPath = getRedirectPath(path, Boolean(session))
     if (redirectPath) navigateTo(redirectPath, true)
-  }, [mounted, path, session])
+  }, [path, session])
 
   const handleLogin = (nextSession: AuthSession) => {
     localStorage.setItem(AUTH_KEY, JSON.stringify(nextSession))
@@ -125,13 +112,10 @@ function PortalApp() {
   const toggleTheme = () => setTheme(currentTheme => currentTheme === 'dark' ? 'light' : 'dark')
   const activeFeatureId = getActiveFeatureId(path)
 
-  if (!mounted) {
-    return <div className="min-h-screen flex-1 bg-[var(--color-surface-0)]" />
-  }
-
   return (
     <>
       <OfflineBanner />
+      <InstallPrompt />
       <UpdateAvailableToast />
       <Toaster
         position="bottom-right"

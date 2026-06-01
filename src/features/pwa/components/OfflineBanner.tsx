@@ -26,7 +26,7 @@ export default function OfflineBanner() {
       className="flex items-center gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-2 text-xs font-medium text-[var(--color-ink-2)]"
     >
       <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      You are offline — all data is saved locally and available without a connection.
+      You are offline. All data is saved locally and available without a connection.
     </div>
   )
 }

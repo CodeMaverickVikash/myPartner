@@ -13,20 +13,20 @@
 
 ## What This Project Is
 
-A **browser-only SPA** — no backend, no server. It is a dual-feature productivity portal ("MyPartner Portal") with:
-1. **Markdown Editor** — upload, edit, preview, and export `.md` files with live splitting and file watching
-2. **Notes App** — color-coded, pinnable, searchable notes
+A **Next.js full-stack app** deployed on Vercel. Dual-feature productivity portal ("MyPartner Portal"):
+1. **Markdown Editor** — upload, edit, preview, and export `.md` files with live file watching (browser File System Access API)
+2. **Notes App** — color-coded, pinnable, searchable notes synced to Supabase with offline-first queue
 
-Authentication is client-side only (localStorage). All storage is browser-local.
+Authentication is client-side only (localStorage, no password). Notes are stored in Supabase; markdown files are local-only (localStorage + IndexedDB).
 
 ---
 
 ## Commands
 
 ```powershell
-pnpm dev       # Vite dev server → http://localhost:5173
-pnpm build     # TypeScript check + production build → dist/
-pnpm preview   # Serve production build locally
+pnpm dev       # Next.js dev server → http://localhost:3000
+pnpm build     # TypeScript check + production build
+pnpm start     # Serve production build locally
 ```
 
 ---
@@ -45,40 +45,69 @@ Invoke: `@ux-ui-developer-agent` or naturally — *"have the ux agent review the
 
 ```
 src/
-├── App.tsx                                # Root: routing + auth state + theme toggle
-├── types.ts                               # Shared interfaces: MarkdownFile, Heading
-├── index.css                              # Global CSS: @theme tokens, dark mode, markdown styles
-├── components/
-│   ├── mypartner/
-│   │   └── MyPartnerShell.tsx             # Auth shell: Login form + Portal layout + featureRegistry
-│   ├── notes/
-│   │   └── NotesApp.tsx                   # Notes feature (create/edit/pin/search/color)
+├── app/                                     # Next.js App Router
+│   ├── layout.tsx                           # Root layout: metadata, viewport, PWA tags
+│   ├── globals.css                          # Global CSS: @theme tokens, dark mode, markdown styles
+│   ├── manifest.ts                          # PWA manifest (webmanifest)
+│   ├── [[...path]]/page.tsx                 # Catch-all route → PortalApp (client component)
+│   └── api/notes/
+│       ├── route.ts                         # GET /api/notes, POST /api/notes
+│       └── [id]/route.ts                    # PATCH /api/notes/[id], DELETE /api/notes/[id]
+├── features/
+│   ├── portal/
+│   │   ├── PortalApp.tsx                    # Client root: auth state, routing, theme
+│   │   └── components/MyPartnerShell.tsx    # Login form + Portal layout + featureRegistry
 │   ├── markdown/
-│   │   └── MarkdownWrapper.tsx            # Markdown editor orchestrator
-│   ├── Sidebar.tsx                        # File list + heading navigation
-│   ├── Content.tsx                        # Split-view content area
-│   ├── MarkdownEditor.tsx                 # Raw text editor pane (contenteditable)
-│   └── MarkdownViewer.tsx                 # Rendered HTML preview pane
-└── utils/
-    ├── fileSystem.ts                      # File System Access API wrapper
-    ├── indexedDB.ts                       # Persist FileSystemFileHandle across page reloads
-    ├── markdown.ts                        # marked.parse() + highlight.js + heading extraction
-    └── storage.ts                         # localStorage JSON helpers
+│   │   ├── MarkdownWorkspace.tsx            # Markdown editor orchestrator
+│   │   ├── types.ts                         # MarkdownFile type
+│   │   ├── components/
+│   │   │   ├── Sidebar.tsx                  # File list + heading navigation
+│   │   │   ├── Content.tsx                  # Split-view area
+│   │   │   ├── MarkdownEditor.tsx           # Raw editor pane (contenteditable)
+│   │   │   ├── MarkdownViewer.tsx           # Rendered HTML preview pane
+│   │   │   └── WelcomeScreen.tsx            # Empty state / drag-drop upload
+│   │   └── lib/
+│   │       ├── storage.ts                   # localStorage JSON helpers
+│   │       ├── markdown.ts                  # marked.parse() + highlight.js + heading extraction
+│   │       ├── indexed-db.ts                # Persist FileSystemFileHandle across reloads
+│   │       └── file-system.ts               # File System Access API wrapper
+│   ├── notes/
+│   │   └── components/NotesApp.tsx          # Notes feature (offline-first, syncs to Supabase)
+│   └── pwa/
+│       ├── hooks/useInstallPrompt.ts
+│       └── components/
+│           ├── OfflineBanner.tsx
+│           ├── UpdateAvailableToast.tsx
+│           └── InstallPrompt.tsx
+└── types/
+    └── file-system-access.d.ts              # File System Access API ambient types
+
+backend/
+├── notes/
+│   ├── model.ts                             # Note, NoteRow, NoteColor types + mapNoteRow helpers
+│   ├── collection-handlers.ts               # Handlers for GET + POST /api/notes
+│   └── item-handlers.ts                     # Handlers for PATCH + DELETE /api/notes/[id]
+└── supabase/
+    └── server.ts                            # Supabase server client (nodejs runtime)
 ```
+
+**Path aliases** (tsconfig.json):
+- `@/*` → `src/*`
+- `@backend/*` → `backend/*`
 
 ---
 
 ## Routing
 
-Client-side routing using the browser History API (no React Router).
+Next.js catch-all `src/app/[[...path]]/page.tsx` renders `<PortalApp />` for every path. Routing inside the app is client-side History API (no Next.js `<Link>` or `useRouter`).
 
 | Path | Renders | Condition |
 |---|---|---|
 | `/login` | `MyPartnerLogin` | Unauthenticated |
-| `/portal/markdown` | `MyPartnerPortal` → `MarkdownWrapper` | Default after login |
+| `/portal/markdown` | `MyPartnerPortal` → `MarkdownWorkspace` | Default after login |
 | `/portal/notes` | `MyPartnerPortal` → `NotesApp` | Notes feature |
 
-**`App.tsx` key functions:**
+**`PortalApp.tsx` key functions:**
 - `getRedirectPath(path, hasSession)` — enforces auth guard; returns redirect target or `null`
 - `getActiveFeatureId(path): FeatureId` — maps path to `'markdown' | 'notes'`
 - `navigateTo(path, replace?)` — pushes/replaces history and fires `popstate`
@@ -92,7 +121,7 @@ Client-side routing using the browser History API (no React Router).
 3. Logout → clears `mypartner-auth-session` → navigates to `/login`
 4. Session survives page reload (read from localStorage on mount)
 
-`AuthSession` shape (from `MyPartnerShell.tsx`):
+`AuthSession` shape (`MyPartnerShell.tsx`):
 ```ts
 interface AuthSession {
   name: string
@@ -104,46 +133,43 @@ interface AuthSession {
 
 ---
 
+## Notes: Offline-First Architecture
+
+Notes use a **write-through cache + mutation queue** pattern:
+
+- **localStorage cache** (`mypartner-notes:<email>:cache`) — loaded immediately on mount; no flash
+- **mutation queue** (`mypartner-notes:<email>:queue`) — queued ops when offline: `{ type: 'upsert', note }` or `{ type: 'delete' }`
+- On mount: if online, flush queue then fetch remote; if offline, serve cache
+- On reconnect (`online` event): flush queue, re-fetch remote
+- API routes (`/api/notes`, `/api/notes/[id]`) hit Supabase; require `x-user-email` header for row-level isolation
+
+---
+
 ## Theme System
 
 **How it works:**
-- `data-theme="dark"` attribute set on `document.documentElement` by `App.tsx`
+- `data-theme="dark"` attribute set on `document.documentElement` by `PortalApp.tsx`
 - Persisted to `localStorage` under key `mypartner-theme`
 - On load: reads saved preference, falls back to `prefers-color-scheme`
 
-**Global tokens (Tailwind `@theme` in `index.css`):**
+**Global tokens (Tailwind `@theme` in `globals.css`) — warm palette:**
 
 | Token | Light | Dark |
 |---|---|---|
-| `--color-surface-0` | `#F8FAFC` | `#0D1117` |
-| `--color-surface-1` | `#FFFFFF` | `#161B22` |
-| `--color-surface-2` | `#F1F5F9` | `#1C2128` |
-| `--color-ink-1` | `#0F172A` | `#E6EDF3` |
-| `--color-ink-2` | `#475569` | `#8B949E` |
-| `--color-ink-3` | `#94A3B8` | `#6E7681` |
-| `--color-line` | `#E2E8F0` | `#30363D` |
+| `--color-surface-0` | `#F5F3EF` | `#0D1117` |
+| `--color-surface-1` | `#FEFCF8` | `#161B22` |
+| `--color-surface-2` | `#ECEAE5` | `#1C2128` |
+| `--color-ink-1` | `#302E2B` | `#C9D1D9` |
+| `--color-ink-2` | `#65605A` | `#A0AAB5` |
+| `--color-ink-3` | `#9A948D` | `#8A9BAB` |
+| `--color-line` | `#DDD9D2` | `#30363D` |
 
 **Brand palette:**
-- `--color-crimson: #A82323` | `--color-cream: #FEFFD3` | `--color-sage: #BCD9A2` | `--color-forest: #6D9E51`
+- `--color-forest: #0d9488` (teal-600 light) / `#14b8a6` (teal-500 dark) — primary
+- `--color-forest-strong: #0f766e` / `#2dd4bf` — hover
+- `--color-crimson: #ef4444` / `#f87171` — danger
 
-**MyPartner shell vars** (set inline via JS in `MyPartnerShell.tsx`, not in CSS):
-
-| Var | Purpose |
-|---|---|
-| `--mp-bg` | Shell background |
-| `--mp-bg-elevated` | Cards/panels |
-| `--mp-bg-muted` | Toolbars, muted areas |
-| `--mp-text` | Primary text |
-| `--mp-text-muted` | Secondary text |
-| `--mp-border` | Borders |
-| `--mp-primary` | Primary brand color (teal: `#0f766e` light / `#2dd4bf` dark) |
-| `--mp-primary-strong` | Hover state for primary |
-| `--mp-accent` | Accent/highlight (amber) |
-| `--mp-danger` | Destructive actions |
-| `--mp-shadow` | Box shadow |
-| `--mp-ring` | Focus ring |
-
-**Rule:** Use `var(--color-surface-*)` and `var(--color-ink-*)` for any new UI elements. Never hardcode colors that break in dark mode.
+**Rule:** Use `var(--color-surface-*)` and `var(--color-ink-*)` for any new UI elements. Never hardcode colors.
 
 ---
 
@@ -153,8 +179,9 @@ interface AuthSession {
 |---|---|---|
 | `mypartner-auth-session` | `AuthSession` | Login session |
 | `mypartner-theme` | `'light' \| 'dark'` | Theme preference |
-| `markdown-viewer-files` | `MarkdownFile[]` | Uploaded markdown files |
-| `markdown-viewer-notes` | Note array | Notes app data |
+| `uploadedFiles` | `MarkdownFile[]` | Markdown editor files |
+| `mypartner-notes:<email>:cache` | `Note[]` | Notes offline cache (per user) |
+| `mypartner-notes:<email>:queue` | `QueuedNoteMutation[]` | Pending offline mutations (per user) |
 
 ---
 
@@ -162,78 +189,79 @@ interface AuthSession {
 
 | Layer | Tool | Version |
 |---|---|---|
-| UI | React | 19 |
+| Framework | Next.js (App Router) | 16.2.6 |
+| UI | React | 19.2.4 |
 | Language | TypeScript | 5 (strict mode) |
-| Build | Vite | 7 |
-| Styling | Tailwind CSS v4 (PostCSS `@theme`) | 4 |
-| Markdown | marked | 17 |
+| Styling | Tailwind CSS v4 (`@theme` in globals.css) | 4 |
+| Database | Supabase (postgres) | `@supabase/supabase-js ^2` |
+| Markdown | marked | 18 |
 | Syntax highlight | highlight.js (github-dark theme) | 11 |
-| Icons | lucide-react (preferred) + react-icons | — |
-| Notifications | react-hot-toast | — |
-| Deploy | Vercel (`vercel.json` has SPA rewrite rule) | — |
+| Icons | lucide-react | 1.17+ |
+| Notifications | react-hot-toast | 2 |
+| IDs | uuid | 14 |
+| Deploy | Vercel | — |
 
 ---
 
 ## Key Conventions
 
-- **No backend** — browser-only storage only (localStorage, IndexedDB, File System Access API)
-- **Strict TypeScript** — no `any`, no unused vars/params (`tsconfig.app.json: strict: true`)
-- **Tailwind v4** — uses `@theme` directive in `index.css`; do not add config to `tailwind.config.js`
-- **Icons** — use `lucide-react` for new icons; avoid adding new `react-icons` imports
-- **State** — local React state + localStorage; no Redux, Zustand, or Context needed
+- **Strict TypeScript** — no `any`, no unused vars/params (`tsconfig.json: strict: true`)
+- **Tailwind v4** — uses `@theme` directive in `globals.css`; no `tailwind.config.js`
+- **Icons** — use `lucide-react` only; do not add `react-icons` imports
+- **State** — local React state + localStorage; no Redux, Zustand, or Context
 - **Comments** — only when the WHY is non-obvious; never describe what the code does
-- **No `any`** — define types in `types.ts` or inline if feature-specific
+- **No `any`** — define types in `model.ts` or feature `types.ts`
+- **API runtime** — Next.js API routes use `export const runtime = 'nodejs'` and `export const dynamic = 'force-dynamic'`
 
 ---
 
 ## Feature: File System Access API
 
-`utils/fileSystem.ts`:
-- `openFileFromSystem()` — file picker → returns `File`
+`src/features/markdown/lib/file-system.ts`:
+- `openFileFromSystem()` — file picker → returns `{ fileHandle, file, content, name, path }`
 - `saveToFileHandle(handle, content)` — write to existing handle
-- `saveAsNewFile(content)` — save-as dialog
-- `checkFileModified(handle, lastModified)` — detect external edits
-- `watchFile(handle, cb)` — polls every 2 s; returns cleanup function
+- `watchFile(handle, lastModified, cb, intervalMs)` — polls every N ms; returns cleanup fn
 - `isFileSystemAccessSupported()` — feature detection guard
 
-File handles survive page reload via IndexedDB (`utils/indexedDB.ts`).
+File handles survive page reload via IndexedDB (`lib/indexed-db.ts`).
 
 ---
 
 ## Adding a New Portal Feature
 
-1. Create `src/components/<feature>/FeatureApp.tsx`
-2. Add entry to `featureRegistry` array in `MyPartnerShell.tsx`
-3. Add route case in `App.tsx → getActiveFeatureId()`
-4. Allow the path in `App.tsx → getRedirectPath()`
-5. Render the component in `App.tsx` JSX (`activeFeatureId === '<feature>' && <FeatureApp />`)
+1. Create `src/features/<feature>/FeatureApp.tsx`
+2. Add entry to `featureRegistry` in `src/features/portal/components/MyPartnerShell.tsx`
+3. Add route case in `PortalApp.tsx → getActiveFeatureId()`
+4. Allow the path in `PortalApp.tsx → getRedirectPath()`
+5. Render the component in `PortalApp.tsx` JSX (`activeFeatureId === '<feature>' && <FeatureApp />`)
 
 ---
 
 ## Notes App (`NotesApp.tsx`)
 
-- Colors: mint, sky, coral, gold
-- Features: pin, search (full-text), word count, createdAt/updatedAt timestamps
-- Storage: `markdown-viewer-notes` in localStorage
+- Colors: mint, sky, coral, gold (defined in `backend/notes/model.ts`)
+- Features: pin, search (full-text), word count, createdAt/updatedAt timestamps, offline sync
+- Storage: Supabase (primary) + localStorage cache + offline mutation queue
 - Layout: sidebar + main editor, 1-col mobile / 2-col desktop
 
 ---
 
-## Markdown Editor (`MarkdownWrapper.tsx`)
+## Markdown Editor (`MarkdownWorkspace.tsx`)
 
-- Drag-and-drop or picker upload of `.md` files
-- localStorage persistence of file content
+- File picker or drag-drop upload of `.md` files
+- localStorage persistence of file content (`uploadedFiles`)
 - IndexedDB persistence of file handles (for external file watching)
 - Split-view: editor (contenteditable) + rendered preview
 - 2-second poll detects external file changes
-- Export as `.md` download
+- Save back to original file via File System Access API
 
 ---
 
 ## Do Not
 
 - Do not use `any` — write proper TS types
-- Do not hardcode colors — use `var(--color-*)` or `var(--mp-*)` vars
-- Do not break the `[data-theme="dark"]` CSS selector system in `index.css`
+- Do not hardcode colors — use `var(--color-*)` tokens
+- Do not break the `[data-theme="dark"]` CSS selector system in `globals.css`
 - Do not use Tailwind `bg-white` or similar — they override the theme system
-- Don't ask for server start, don't start server
+- Do not add `react-icons` imports — use `lucide-react`
+- Don't ask to start the dev server
