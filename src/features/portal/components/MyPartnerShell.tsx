@@ -1,5 +1,6 @@
 import { useState, type ReactNode, type SyntheticEvent } from 'react'
 import {
+  ArrowLeft,
   ArrowRight,
   BookOpenText,
   CheckCircle2,
@@ -247,6 +248,17 @@ export function MyPartnerPortal({
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-surface-0 max-lg:h-auto max-lg:min-h-screen">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface-1 px-4 lg:px-5">
+        {!isHome && (
+          <button
+            type="button"
+            onClick={() => onNavigate('/portal/home')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 cursor-pointer"
+            title="Back to workspace"
+            aria-label="Back to workspace"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        )}
         <BrandMark />
         <div className="ml-auto flex items-center gap-2.5">
           <div className="hidden text-right sm:block">
