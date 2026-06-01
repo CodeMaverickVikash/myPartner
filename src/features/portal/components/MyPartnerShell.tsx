@@ -1,9 +1,10 @@
-import type { ReactNode, SyntheticEvent } from 'react'
+import { useState, type ReactNode, type SyntheticEvent } from 'react'
 import {
   ArrowRight,
   BookOpenText,
   CheckCircle2,
   Download,
+  Loader2,
   LogOut,
   Moon,
   NotebookTabs,
@@ -90,16 +91,38 @@ const loginFeatures = [
 
 export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
   const { canInstall, installed, install } = useInstallPrompt()
+  const [isChecking, setIsChecking] = useState(false)
+  const [emailError, setEmailError] = useState('')
 
   const inputClass =
     'mt-1.5 w-full rounded-xl border border-line bg-surface-0 px-4 py-2.5 text-sm text-ink-1 placeholder:text-ink-3 outline-none transition focus:border-forest focus:ring-2 focus:ring-forest/20'
 
-  const handleSubmit = (e: SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     const email   = String(fd.get('email')   ?? '').trim()
     const name    = String(fd.get('name')    ?? '').trim()
     const company = String(fd.get('company') ?? '').trim()
+
+    setIsChecking(true)
+    setEmailError('')
+    try {
+      const res = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const { allowed } = (await res.json()) as { allowed: boolean }
+      if (!allowed) {
+        setEmailError('Access restricted. This email is not authorized.')
+        setIsChecking(false)
+        return
+      }
+    } catch {
+      // fail open — a broken API should not lock users out
+    }
+    setIsChecking(false)
+
     onLogin({
       email,
       name:    name    || email.split('@')[0] || 'Partner',
@@ -148,29 +171,45 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
           onSubmit={handleSubmit}
         >
           <h2 className="text-xl font-bold text-ink-1">Sign in to continue</h2>
-          <p className="mt-1 text-sm text-ink-3">Local workspace · no password required</p>
+          <p className="mt-1 text-sm text-ink-3">Local workspace</p>
 
           <div className="mt-6 space-y-4">
             <label className="block text-xs font-semibold text-ink-2">
               Work email *
-              <input className={inputClass} name="email" type="email" placeholder="you@company.com" required />
-            </label>
-            <label className="block text-xs font-semibold text-ink-2">
-              Name
-              <input className={inputClass} name="name" type="text" placeholder="Your name" />
-            </label>
-            <label className="block text-xs font-semibold text-ink-2">
-              Company
-              <input className={inputClass} name="company" type="text" placeholder="Company or team" />
+              <input
+                className={inputClass}
+                name="email"
+                type="email"
+                placeholder="you@company.com"
+                required
+                aria-invalid={!!emailError}
+                aria-describedby={emailError ? 'email-error' : undefined}
+                onChange={() => setEmailError('')}
+              />
+              {emailError && (
+                <p id="email-error" role="alert" className="mt-1.5 text-xs text-crimson">
+                  {emailError}
+                </p>
+              )}
             </label>
           </div>
 
           <button
             type="submit"
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-6 py-3 font-semibold text-white transition hover:opacity-90 active:scale-[0.98]"
+            disabled={isChecking}
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-6 py-3 font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Open portal
-            <ArrowRight className="h-4 w-4" />
+            {isChecking ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking…
+              </>
+            ) : (
+              <>
+                Open portal
+                <ArrowRight className="h-4 w-4" />
+              </>
+            )}
           </button>
 
           <button
