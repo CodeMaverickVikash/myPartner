@@ -43,3 +43,14 @@ export function normalizeOwnerEmail(value: string | null) {
 export function normalizeNoteColor(value: unknown): NoteColor {
   return noteColors.includes(value as NoteColor) ? value as NoteColor : 'mint'
 }
+
+export function isUuid(value: unknown) {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+export function normalizeIsoDate(value: unknown, fallback: string) {
+  if (typeof value !== 'string') return fallback
+  const time = Date.parse(value)
+  return Number.isNaN(time) ? fallback : new Date(time).toISOString()
+}

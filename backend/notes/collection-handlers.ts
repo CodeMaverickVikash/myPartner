@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@backend/supabase/server'
-import { mapNoteRow, normalizeNoteColor, normalizeOwnerEmail, type NoteRow } from './model'
+import {
+  isUuid,
+  mapNoteRow,
+  normalizeIsoDate,
+  normalizeNoteColor,
+  normalizeOwnerEmail,
+  type NoteRow,
+} from './model'
 
 const selectColumns = 'id, owner_email, title, body, color, pinned, created_at, updated_at'
 
@@ -39,18 +46,20 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>
     const now = new Date().toISOString()
+    const note = {
+      ...(isUuid(body.id) ? { id: body.id } : {}),
+      owner_email: ownerEmail,
+      title: typeof body.title === 'string' ? body.title : '',
+      body: typeof body.body === 'string' ? body.body : '',
+      color: normalizeNoteColor(body.color),
+      pinned: typeof body.pinned === 'boolean' ? body.pinned : false,
+      created_at: normalizeIsoDate(body.createdAt, now),
+      updated_at: normalizeIsoDate(body.updatedAt, now),
+    }
 
     const { data, error } = await getSupabaseAdmin()
       .from('notes')
-      .insert({
-        owner_email: ownerEmail,
-        title: typeof body.title === 'string' ? body.title : '',
-        body: typeof body.body === 'string' ? body.body : '',
-        color: normalizeNoteColor(body.color),
-        pinned: typeof body.pinned === 'boolean' ? body.pinned : false,
-        created_at: now,
-        updated_at: now,
-      })
+      .upsert(note, { onConflict: 'id' })
       .select(selectColumns)
       .single()
 

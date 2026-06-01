@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, FileText, Pin, PinOff, Search, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { v4 as uuidv4 } from 'uuid'
 import type { Note, NoteColor } from '@backend/notes/model'
 
 interface NotesAppProps {
   ownerEmail: string
 }
 
-const STORAGE_KEY = 'markdown-viewer-notes'
+type QueuedNoteMutation =
+  | { id: string; type: 'upsert'; note: Note }
+  | { id: string; type: 'delete' }
+
+const STORAGE_PREFIX = 'mypartner-notes'
 const colorOptions: NoteColor[] = ['mint', 'sky', 'coral', 'gold']
 const cx = (...classes: Array<string | false | undefined>) => classes.filter(Boolean).join(' ')
 
@@ -25,24 +30,57 @@ const colorLabel: Record<NoteColor, string> = {
 const createNote = (): Note => {
   const now = new Date().toISOString()
   return {
-    id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: uuidv4(),
     title: '', body: '', color: 'mint', pinned: false,
     createdAt: now, updatedAt: now,
   }
 }
 
-const getStorageKey = (ownerEmail: string) => `${STORAGE_KEY}:${ownerEmail.toLowerCase()}`
+const getNotesCacheKey = (ownerEmail: string) => `${STORAGE_PREFIX}:${ownerEmail.toLowerCase()}:cache`
+const getQueueKey = (ownerEmail: string) => `${STORAGE_PREFIX}:${ownerEmail.toLowerCase()}:queue`
 
-const readStoredNotes = (ownerEmail: string): Note[] => {
-  if (typeof window === 'undefined') return []
+const readJson = <T,>(key: string, fallback: T): T => {
+  if (typeof window === 'undefined') return fallback
 
   try {
-    const value = localStorage.getItem(getStorageKey(ownerEmail))
-    if (!value) return []
-    const parsed = JSON.parse(value) as Note[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
+    const value = localStorage.getItem(key)
+    return value ? JSON.parse(value) as T : fallback
+  } catch {
+    return fallback
+  }
 }
+
+const writeJson = (key: string, value: unknown) => {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(key, JSON.stringify(value))
+}
+
+const readCachedNotes = (ownerEmail: string) => readJson<Note[]>(getNotesCacheKey(ownerEmail), [])
+const writeCachedNotes = (ownerEmail: string, notes: Note[]) => writeJson(getNotesCacheKey(ownerEmail), notes)
+const readQueuedMutations = (ownerEmail: string) => readJson<QueuedNoteMutation[]>(getQueueKey(ownerEmail), [])
+const writeQueuedMutations = (ownerEmail: string, mutations: QueuedNoteMutation[]) =>
+  writeJson(getQueueKey(ownerEmail), mutations)
+
+const queueUpsert = (ownerEmail: string, note: Note) => {
+  const mutations = readQueuedMutations(ownerEmail)
+    .filter(mutation => mutation.id !== note.id)
+  writeQueuedMutations(ownerEmail, [...mutations, { id: note.id, type: 'upsert', note }])
+}
+
+const queueDelete = (ownerEmail: string, noteId: string) => {
+  const mutations = readQueuedMutations(ownerEmail)
+  const existing = mutations.find(mutation => mutation.id === noteId)
+  const next = mutations.filter(mutation => mutation.id !== noteId)
+
+  if (existing?.type === 'upsert') {
+    writeQueuedMutations(ownerEmail, next)
+    return
+  }
+
+  writeQueuedMutations(ownerEmail, [...next, { id: noteId, type: 'delete' }])
+}
+
+const isOnline = () => typeof navigator === 'undefined' || navigator.onLine
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -67,20 +105,31 @@ async function notesRequest<T>(ownerEmail: string, path: string, init?: RequestI
 }
 
 function NotesApp({ ownerEmail }: NotesAppProps) {
-  const [notes, setNotes] = useState<Note[]>(() => readStoredNotes(ownerEmail))
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => readStoredNotes(ownerEmail)[0]?.id ?? null)
+  const [notes, setNotes] = useState<Note[]>(() => readCachedNotes(ownerEmail))
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => readCachedNotes(ownerEmail)[0]?.id ?? null)
   const [query, setQuery] = useState('')
   const [mobilePane, setMobilePane] = useState<'list' | 'editor'>('list')
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [remoteEnabled, setRemoteEnabled] = useState(true)
+  const [isOffline, setIsOffline] = useState(() => !isOnline())
+  const [queuedCount, setQueuedCount] = useState(() => readQueuedMutations(ownerEmail).length)
   const pendingPatchRef = useRef(new Map<string, Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>>())
   const patchTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
   useEffect(() => {
     let isCurrent = true
+    const cachedNotes = readCachedNotes(ownerEmail)
+
+    setNotes(cachedNotes)
+    setActiveNoteId(cachedNotes[0]?.id ?? null)
+    setQueuedCount(readQueuedMutations(ownerEmail).length)
+
+    if (!isOnline()) {
+      setIsOffline(true)
+      return () => { isCurrent = false }
+    }
+
     setIsLoading(true)
-    setRemoteEnabled(true)
 
     notesRequest<{ notes: Note[] }>(ownerEmail, '/api/notes')
       .then(({ notes: remoteNotes }) => {
@@ -89,12 +138,11 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
         setActiveNoteId(current => current && remoteNotes.some(note => note.id === current)
           ? current
           : remoteNotes[0]?.id ?? null)
-        localStorage.setItem(getStorageKey(ownerEmail), JSON.stringify(remoteNotes))
+        writeCachedNotes(ownerEmail, remoteNotes)
       })
       .catch((error) => {
         if (!isCurrent) return
         console.error('Failed to load notes:', error)
-        setRemoteEnabled(false)
         toast.error(error instanceof Error ? error.message : 'Unable to load notes')
       })
       .finally(() => {
@@ -105,8 +153,65 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
   }, [ownerEmail])
 
   useEffect(() => {
-    localStorage.setItem(getStorageKey(ownerEmail), JSON.stringify(notes))
-  }, [notes, ownerEmail])
+    writeCachedNotes(ownerEmail, notes)
+  }, [ownerEmail, notes])
+
+  const flushQueuedMutations = useCallback(async () => {
+    if (!isOnline()) return
+
+    const mutations = readQueuedMutations(ownerEmail)
+    if (mutations.length === 0) return
+
+    setIsSaving(true)
+
+    try {
+      for (const mutation of mutations) {
+        if (mutation.type === 'delete') {
+          await notesRequest<void>(ownerEmail, `/api/notes/${mutation.id}`, { method: 'DELETE' })
+        } else {
+          await notesRequest<{ note: Note }>(ownerEmail, '/api/notes', {
+            method: 'POST',
+            body: JSON.stringify(mutation.note),
+          })
+        }
+      }
+
+      writeQueuedMutations(ownerEmail, [])
+      setQueuedCount(0)
+
+      const { notes: remoteNotes } = await notesRequest<{ notes: Note[] }>(ownerEmail, '/api/notes')
+      setNotes(remoteNotes)
+      setActiveNoteId(current => current && remoteNotes.some(note => note.id === current)
+        ? current
+        : remoteNotes[0]?.id ?? null)
+      writeCachedNotes(ownerEmail, remoteNotes)
+      toast.success('Offline changes synced')
+    } catch (error) {
+      console.error('Failed to sync offline notes:', error)
+      setQueuedCount(readQueuedMutations(ownerEmail).length)
+      toast.error(error instanceof Error ? error.message : 'Unable to sync offline notes')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [ownerEmail])
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false)
+      void flushQueuedMutations()
+    }
+    const handleOffline = () => setIsOffline(true)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    if (isOnline()) void flushQueuedMutations()
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [flushQueuedMutations, ownerEmail])
 
   useEffect(() => {
     const patchTimers = patchTimersRef.current
@@ -135,37 +240,61 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
   const activeNote = notes.find(n => n.id === activeNoteId) ?? null
 
   const addNote = async () => {
-    const temporaryNote = createNote()
-    setNotes(curr => [temporaryNote, ...curr])
-    setActiveNoteId(temporaryNote.id)
-    setMobilePane('editor')
+    const draftNote = createNote()
 
-    if (!remoteEnabled) return
+    if (!isOnline()) {
+      setNotes(curr => [draftNote, ...curr])
+      setActiveNoteId(draftNote.id)
+      setMobilePane('editor')
+      queueUpsert(ownerEmail, draftNote)
+      setQueuedCount(readQueuedMutations(ownerEmail).length)
+      return
+    }
 
     try {
       setIsSaving(true)
       const { note } = await notesRequest<{ note: Note }>(ownerEmail, '/api/notes', {
         method: 'POST',
         body: JSON.stringify({
-          title: temporaryNote.title,
-          body: temporaryNote.body,
-          color: temporaryNote.color,
-          pinned: temporaryNote.pinned,
+          id: draftNote.id,
+          title: draftNote.title,
+          body: draftNote.body,
+          color: draftNote.color,
+          pinned: draftNote.pinned,
+          createdAt: draftNote.createdAt,
+          updatedAt: draftNote.updatedAt,
         }),
       })
-      setNotes(curr => curr.map(current => current.id === temporaryNote.id ? note : current))
+      setNotes(curr => [note, ...curr])
       setActiveNoteId(note.id)
+      setMobilePane('editor')
     } catch (error) {
       console.error('Failed to create note:', error)
-      setRemoteEnabled(false)
-      toast.error(error instanceof Error ? error.message : 'Unable to create note')
+      if (!isOnline()) {
+        setNotes(curr => [draftNote, ...curr])
+        setActiveNoteId(draftNote.id)
+        setMobilePane('editor')
+        queueUpsert(ownerEmail, draftNote)
+        setQueuedCount(readQueuedMutations(ownerEmail).length)
+        toast('You are offline. Note will sync when you reconnect.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Unable to create note')
+      }
     } finally {
       setIsSaving(false)
     }
   }
 
-  const schedulePatch = (noteId: string, updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => {
-    if (!remoteEnabled) return
+  const schedulePatch = (
+    noteId: string,
+    updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>,
+    noteSnapshot: Note,
+  ) => {
+    if (!isOnline()) {
+      queueUpsert(ownerEmail, noteSnapshot)
+      setQueuedCount(readQueuedMutations(ownerEmail).length)
+      return
+    }
 
     const existingUpdates = pendingPatchRef.current.get(noteId) ?? {}
     pendingPatchRef.current.set(noteId, { ...existingUpdates, ...updates })
@@ -190,8 +319,13 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
         })
         .catch((error) => {
           console.error('Failed to update note:', error)
-          setRemoteEnabled(false)
-          toast.error(error instanceof Error ? error.message : 'Unable to update note')
+          if (!isOnline()) {
+            queueUpsert(ownerEmail, noteSnapshot)
+            setQueuedCount(readQueuedMutations(ownerEmail).length)
+            toast('You are offline. Changes will sync when you reconnect.')
+          } else {
+            toast.error(error instanceof Error ? error.message : 'Unable to update note')
+          }
         })
         .finally(() => setIsSaving(false))
     }, 500)
@@ -200,11 +334,13 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
   }
 
   const updateActiveNote = (updates: Partial<Pick<Note, 'title' | 'body' | 'color' | 'pinned'>>) => {
-    if (!activeNoteId) return
+    if (!activeNoteId || !activeNote) return
+    const updatedNote = { ...activeNote, ...updates, updatedAt: new Date().toISOString() }
+
     setNotes(curr => curr.map(n =>
-      n.id === activeNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n
+      n.id === activeNoteId ? updatedNote : n
     ))
-    schedulePatch(activeNoteId, updates)
+    schedulePatch(activeNoteId, updates, updatedNote)
   }
 
   const deleteActiveNote = async () => {
@@ -218,17 +354,26 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
       return next
     })
 
-    if (!remoteEnabled) return
+    if (!isOnline()) {
+      queueDelete(ownerEmail, noteId)
+      setQueuedCount(readQueuedMutations(ownerEmail).length)
+      return
+    }
 
     try {
       setIsSaving(true)
       await notesRequest<void>(ownerEmail, `/api/notes/${noteId}`, { method: 'DELETE' })
     } catch (error) {
       console.error('Failed to delete note:', error)
-      setRemoteEnabled(false)
-      toast.error(error instanceof Error ? error.message : 'Unable to delete note')
-      setNotes(previousNotes)
-      setActiveNoteId(noteId)
+      if (!isOnline()) {
+        queueDelete(ownerEmail, noteId)
+        setQueuedCount(readQueuedMutations(ownerEmail).length)
+        toast('You are offline. Delete will sync when you reconnect.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Unable to delete note')
+        setNotes(previousNotes)
+        setActiveNoteId(noteId)
+      }
     } finally {
       setIsSaving(false)
     }
@@ -254,7 +399,7 @@ function NotesApp({ ownerEmail }: NotesAppProps) {
             <p className="text-[11px] text-ink-3 mt-0.5">
               {isLoading
                 ? 'Loading...'
-                : `${notes.length} saved${remoteEnabled ? isSaving ? ' - syncing' : '' : ' - local'}`}
+                : `${notes.length} saved${isOffline ? ' - offline' : isSaving ? ' - syncing' : ''}${queuedCount > 0 ? ` - ${queuedCount} queued` : ''}`}
             </p>
           </div>
           <button
