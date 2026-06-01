@@ -11,7 +11,7 @@ type FileMap = Map<string, MarkdownFile>
 type FileHandleMap = Map<string, FileSystemFileHandle>
 type WatcherMap = Map<string, () => void>
 
-function MarkdownWorkspace() {
+function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [files, setFiles] = useState<FileMap>(new Map())
   const [currentFileId, setCurrentFileId] = useState<string | null>(null)
   const [sidebarVisible, setSidebarVisible] = useState(() => (
@@ -243,6 +243,7 @@ function MarkdownWorkspace() {
       <Sidebar
         files={files}
         currentFileId={currentFileId}
+        onNavigate={onNavigate}
         onFileSelect={handleFileSelect}
         onFileRemove={handleFileRemove}
         onOpenFromSystem={handleOpenFromSystem}

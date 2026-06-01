@@ -1,4 +1,4 @@
-import { BookOpen, FileText, X, FolderOpen, Folder, Link } from 'lucide-react'
+import { ArrowLeft, BookOpen, FileText, X, FolderOpen, Folder, Link } from 'lucide-react'
 import { extractHeadings } from '../lib/markdown'
 import { isFileSystemAccessSupported } from '../lib/file-system'
 import type { MarkdownFile } from '../types'
@@ -15,6 +15,7 @@ interface SidebarProps {
   onFileSelect: (fileId: string) => void
   onFileRemove: (fileId: string) => void
   onOpenFromSystem: () => void
+  onNavigate: (path: string) => void
   visible: boolean
   onClose?: () => void
 }
@@ -25,6 +26,7 @@ function Sidebar({
   onFileSelect,
   onFileRemove,
   onOpenFromSystem,
+  onNavigate,
   visible,
   onClose,
 }: SidebarProps) {
@@ -53,10 +55,18 @@ function Sidebar({
       <div className="p-3 border-b border-line shrink-0 bg-surface-2">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-sm font-semibold text-ink-1 flex items-center gap-2 uppercase tracking-wider">
+            <button
+              type="button"
+              onClick={() => onNavigate('/portal/home')}
+              title="Back to home"
+              className="flex h-7 w-7 items-center justify-center rounded text-ink-3 transition hover:bg-surface-2 hover:text-ink-1 active:scale-95 shrink-0 cursor-pointer"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </button>
             <div className="w-6 h-6 bg-forest rounded flex items-center justify-center shadow-sm shrink-0">
               <BookOpen className="w-3.5 h-3.5 text-white" />
             </div>
-            <span>Markdown Editor</span>
+            <span>MD Editor</span>
           </h1>
           {isFileSystemAccessSupported() ? (
             <button
