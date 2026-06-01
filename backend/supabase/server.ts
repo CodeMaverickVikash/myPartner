@@ -7,7 +7,7 @@ export function getSupabaseAdmin() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Supabase server credentials are not configured')
+    throw new Error('Supabase server credentials are not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel environment variables.')
   }
 
   supabaseAdmin ??= createClient(supabaseUrl, serviceRoleKey, {

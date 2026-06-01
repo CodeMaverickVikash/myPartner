@@ -34,9 +34,11 @@ yarn-error.log*
 # local pnpm store
 /.pnpm-store/
 
+# local script builds
+backend/supabase/.seed-dist/
+
 # env files (can opt-in for committing if needed)
 .env*
-!.env.example
 
 # vercel
 .vercel

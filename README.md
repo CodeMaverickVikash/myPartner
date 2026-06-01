@@ -58,3 +58,21 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 The service role key is used only by Next.js API routes. Do not expose it with a `NEXT_PUBLIC_` prefix.
+
+## Vercel Backend Deployment
+
+The backend runs as Next.js Route Handlers on Vercel. The files under `src/app/api` are thin adapters, and the implementation lives in `backend/`.
+
+Before deploying:
+
+1. Run `backend/supabase/init.sql` in the Supabase SQL Editor.
+2. Add these variables in Vercel Project Settings > Environment Variables:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
+```
+
+3. Redeploy after adding or changing environment variables.
+
+Do not run `pnpm db:seed` as part of the Vercel build. Run it locally when you want seed data.
