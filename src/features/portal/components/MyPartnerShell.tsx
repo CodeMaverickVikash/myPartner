@@ -36,6 +36,7 @@ interface LoginProps extends ShellProps {
 
 interface PortalProps extends ShellProps {
   activeFeatureId: FeatureId
+  isHome?: boolean
   session: AuthSession
   children?: ReactNode
   onLogout: () => void
@@ -71,7 +72,7 @@ function BrandMark() {
 function ThemeButton({ theme, onToggleTheme }: ShellProps) {
   return (
     <button
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1 cursor-pointer"
       type="button"
       onClick={onToggleTheme}
       title="Toggle theme"
@@ -197,7 +198,7 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
           <button
             type="submit"
             disabled={isChecking}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-6 py-3 font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-forest px-6 py-3 font-semibold text-white transition hover:opacity-90 active:scale-[0.98] cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isChecking ? (
               <>
@@ -219,7 +220,7 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
             className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-6 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
               installed
                 ? 'cursor-default border-forest/30 bg-forest/5 text-forest'
-                : 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest'
+                : 'border-line bg-surface-0 text-ink-2 hover:border-forest/40 hover:bg-forest/5 hover:text-forest cursor-pointer'
             }`}
           >
             {installed
@@ -235,6 +236,7 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
 
 export function MyPartnerPortal({
   activeFeatureId,
+  isHome,
   session,
   children,
   theme,
@@ -246,27 +248,6 @@ export function MyPartnerPortal({
     <main className="flex h-screen flex-col overflow-hidden bg-surface-0 max-lg:h-auto max-lg:min-h-screen">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface-1 px-4 lg:px-5">
         <BrandMark />
-
-        <div className="h-6 w-px shrink-0 bg-line" />
-
-        <nav className="flex gap-1" aria-label="Features">
-          {featureRegistry.map(feature => (
-            <button
-              key={feature.id}
-              type="button"
-              onClick={() => onNavigate(feature.route)}
-              className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                feature.id === activeFeatureId
-                  ? 'bg-forest/10 text-forest'
-                  : 'text-ink-2 hover:bg-surface-2 hover:text-ink-1'
-              }`}
-            >
-              <feature.icon className="h-4 w-4" />
-              {feature.label}
-            </button>
-          ))}
-        </nav>
-
         <div className="ml-auto flex items-center gap-2.5">
           <div className="hidden text-right sm:block">
             <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-3">{session.company}</p>
@@ -278,10 +259,10 @@ export function MyPartnerPortal({
           <button
             type="button"
             onClick={onLogout}
-            className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-2 transition hover:border-crimson/40 hover:bg-crimson/5 hover:text-crimson"
+            className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-2 transition hover:border-crimson/40 hover:bg-crimson/5 hover:text-crimson cursor-pointer"
+            title="Sign out"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </header>

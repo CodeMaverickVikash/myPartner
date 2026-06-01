@@ -431,7 +431,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     { type: 'icon', icon: ChevronDown, label: 'Collapsible Section', action: () => { insertCollapsible(); setIsMenuOpen(false) } }
   ]
 
-  const btnBase = 'flex shrink-0 items-center justify-center rounded text-forest transition-colors duration-150 hover:bg-forest/10 active:scale-95'
+  const btnBase = 'flex shrink-0 items-center justify-center rounded text-forest transition-colors duration-150 hover:bg-forest/10 active:scale-95 cursor-pointer'
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-surface-0 animate-fade-in">
@@ -492,7 +492,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
                     type="button"
                     onMouseDown={e => e.preventDefault()}
                     onClick={item.action}
-                    className="w-full px-3 py-1.5 text-left text-sm text-ink-2 hover:bg-surface-2 flex items-center gap-2.5 transition-colors"
+                    className="w-full px-3 py-1.5 text-left text-sm text-ink-2 hover:bg-surface-2 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
                     {item.icon && <item.icon className="h-3.5 w-3.5 text-forest shrink-0" />}
                     <span>{item.label}</span>

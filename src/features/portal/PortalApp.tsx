@@ -11,6 +11,7 @@ import {
   type ThemeMode
 } from './components/MyPartnerShell'
 import NotesApp from '@/features/notes/components/NotesApp'
+import PortalHome from './components/PortalHome'
 import InstallPrompt from '@/features/pwa/components/InstallPrompt'
 import OfflineBanner from '@/features/pwa/components/OfflineBanner'
 import UpdateAvailableToast from '@/features/pwa/components/UpdateAvailableToast'
@@ -63,12 +64,12 @@ const getRedirectPath = (path: string, hasSession: boolean) => {
     return path === '/login' ? null : '/login'
   }
 
-  if (path === '/' || path === '/login' || path === '/app' || path === '/portal') return '/portal/markdown'
+  if (path === '/' || path === '/login' || path === '/app' || path === '/portal') return '/portal/home'
   if (path === '/markdown') return '/portal/markdown'
   if (path === '/notes') return '/portal/notes'
-  if (path === '/portal/markdown' || path === '/portal/notes') return null
+  if (path === '/portal/home' || path === '/portal/markdown' || path === '/portal/notes') return null
 
-  return '/portal/markdown'
+  return '/portal/home'
 }
 
 const getActiveFeatureId = (path: string): FeatureId => {
@@ -100,7 +101,7 @@ function PortalApp() {
   const handleLogin = (nextSession: AuthSession) => {
     localStorage.setItem(AUTH_KEY, JSON.stringify(nextSession))
     setSession(nextSession)
-    navigateTo('/portal/markdown')
+    navigateTo('/portal/home')
   }
 
   const handleLogout = () => {
@@ -110,6 +111,7 @@ function PortalApp() {
   }
 
   const toggleTheme = () => setTheme(currentTheme => currentTheme === 'dark' ? 'light' : 'dark')
+  const isHome = path === '/portal/home'
   const activeFeatureId = getActiveFeatureId(path)
 
   return (
@@ -154,14 +156,16 @@ function PortalApp() {
       ) : (
         <MyPartnerPortal
           activeFeatureId={activeFeatureId}
+          isHome={isHome}
           session={session}
           theme={theme}
           onLogout={handleLogout}
           onNavigate={navigateTo}
           onToggleTheme={toggleTheme}
         >
-          {activeFeatureId === 'markdown' && <MarkdownWorkspace />}
-          {activeFeatureId === 'notes' && <NotesApp ownerEmail={session.email} />}
+          {isHome && <PortalHome onNavigate={navigateTo} />}
+          {!isHome && activeFeatureId === 'markdown' && <MarkdownWorkspace />}
+          {!isHome && activeFeatureId === 'notes' && <NotesApp ownerEmail={session.email} onNavigate={navigateTo} />}
         </MyPartnerPortal>
       )}
     </>

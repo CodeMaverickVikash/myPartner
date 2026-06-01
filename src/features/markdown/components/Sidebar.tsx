@@ -126,7 +126,7 @@ function Sidebar({
                       <ul className="list-none pl-9 mt-0.5 mb-1 space-y-0.5">
                         {headings.map((heading, idx) => (
                           <li key={`${heading.id}-${idx}`}>
-                            <a href={`#${heading.id}`} className="text-ink-3 no-underline text-xs transition-all duration-200 hover:text-forest hover:bg-forest/8 block py-1 px-2 rounded">{heading.text}</a>
+                            <a href={`#${heading.id}`} className="text-ink-3 no-underline text-xs transition-all duration-200 hover:text-forest hover:bg-forest/8 block py-1 px-2 rounded cursor-pointer">{heading.text}</a>
                           </li>
                         ))}
                       </ul>

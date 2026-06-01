@@ -3,14 +3,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   ArrowLeft,
+  Check,
+  ChevronDown,
   Clock,
+  Code,
   FileText,
+  LayoutGrid,
+  LayoutList,
+  List,
+  PanelRightClose,
+  PanelRightOpen,
+  ListOrdered,
   Loader2,
   Pin,
   PinOff,
   Plus,
+  Quote,
   Search,
+  Strikethrough,
   Trash2,
   Wifi,
   WifiOff,
@@ -23,6 +37,7 @@ import { pullServerNotes, syncPendingNotes } from '../lib/sync'
 
 interface NotesAppProps {
   ownerEmail: string
+  onNavigate: (path: string) => void
 }
 
 const colorOptions: NoteColor[] = ['mint', 'sky', 'coral', 'gold']
@@ -45,6 +60,15 @@ const formatDate = (value: string) =>
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   }).format(new Date(value))
 
+const stripHtml = (html: string) =>
+  html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+
+const bodyToEditorHtml = (body: string) =>
+  body.includes('<') ? body : body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+
+const noteHasContent = (note: Pick<LocalNote, 'title' | 'body'>) =>
+  note.title.trim().length > 0 || stripHtml(note.body).length > 0
+
 function SyncBadge({ status }: { status: SyncStatus }) {
   if (status === 'synced') return null
   const config = {
@@ -60,17 +84,289 @@ function SyncBadge({ status }: { status: SyncStatus }) {
   )
 }
 
-export default function NotesApp({ ownerEmail }: NotesAppProps) {
+// queryCommandState/Value are deprecated in spec but remain the only viable API
+// for detecting contenteditable formatting state — no replacement exists yet.
+const qcs = (cmd: string): boolean => document.queryCommandState(cmd)
+const qcv = (cmd: string): string  => document.queryCommandValue(cmd)
+
+const headingOptions = [
+  { label: 'Paragraph', tag: 'p',  previewClass: 'text-[13px] text-ink-2' },
+  { label: 'Heading 1', tag: 'h1', previewClass: 'text-[18px] font-bold text-ink-1' },
+  { label: 'Heading 2', tag: 'h2', previewClass: 'text-[15px] font-bold text-ink-1' },
+  { label: 'Heading 3', tag: 'h3', previewClass: 'text-[13px] font-semibold text-ink-1' },
+]
+
+interface FormattingState {
+  bold: boolean; italic: boolean; strike: boolean
+  block: string
+  ul: boolean; ol: boolean
+  alignLeft: boolean; alignCenter: boolean; alignRight: boolean
+  code: boolean
+}
+
+const emptyFmt: FormattingState = {
+  bold: false, italic: false, strike: false, block: '',
+  ul: false, ol: false,
+  alignLeft: false, alignCenter: false, alignRight: false,
+  code: false,
+}
+
+function RichBodyEditor({
+  noteId,
+  value,
+  onChange,
+}: {
+  noteId: string
+  value: string
+  onChange: (html: string) => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const prevNoteId = useRef(noteId)
+  const [isHeadingOpen, setIsHeadingOpen] = useState(false)
+  const headingMenuRef = useRef<HTMLDivElement>(null)
+  const [fmt, setFmt] = useState<FormattingState>(emptyFmt)
+
+  useEffect(() => {
+    if (!ref.current || prevNoteId.current === noteId) return
+    prevNoteId.current = noteId
+    ref.current.innerHTML = bodyToEditorHtml(value)
+  }, [noteId, value])
+
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = bodyToEditorHtml(value)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!isHeadingOpen) return
+    const handler = (e: MouseEvent) => {
+      if (headingMenuRef.current && !headingMenuRef.current.contains(e.target as Node)) {
+        setIsHeadingOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [isHeadingOpen])
+
+  const updateFmt = useCallback(() => {
+    if (!ref.current) return
+    const sel = window.getSelection()
+    let inCode = false
+    if (sel?.rangeCount) {
+      let node: Node | null = sel.getRangeAt(0).commonAncestorContainer
+      while (node && node !== ref.current) {
+        if ((node as Element).nodeName === 'CODE') { inCode = true; break }
+        node = node.parentNode
+      }
+    }
+    setFmt({
+      bold:        qcs('bold'),
+      italic:      qcs('italic'),
+      strike:      qcs('strikeThrough'),
+      block:       qcv('formatBlock').toLowerCase(),
+      ul:          qcs('insertUnorderedList'),
+      ol:          qcs('insertOrderedList'),
+      alignLeft:   qcs('justifyLeft'),
+      alignCenter: qcs('justifyCenter'),
+      alignRight:  qcs('justifyRight'),
+      code:        inCode,
+    })
+  }, [])
+
+  useEffect(() => {
+    const handler = () => {
+      const sel = window.getSelection()
+      if (!sel?.rangeCount || !ref.current) return
+      if (!ref.current.contains(sel.anchorNode)) return
+      updateFmt()
+    }
+    document.addEventListener('selectionchange', handler)
+    return () => document.removeEventListener('selectionchange', handler)
+  }, [updateFmt])
+
+  const syncContent = () => {
+    if (ref.current) onChange(ref.current.innerHTML)
+  }
+
+  const exec = (cmd: string, val?: string) => {
+    ref.current?.focus()
+    document.execCommand(cmd, false, val)
+    syncContent()
+    updateFmt()
+  }
+
+  const wrapCode = () => {
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount) return
+    const range = sel.getRangeAt(0)
+    const code = document.createElement('code')
+    if (range.collapsed) {
+      code.textContent = 'code'
+      range.insertNode(code)
+      range.selectNodeContents(code)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    } else {
+      try { range.surroundContents(code) } catch { code.append(range.extractContents()); range.insertNode(code) }
+    }
+    syncContent()
+    updateFmt()
+  }
+
+  const btn = 'flex shrink-0 items-center justify-center rounded h-7 w-7 text-ink-2 transition-colors hover:bg-surface-0 hover:text-ink-1 active:scale-95 cursor-pointer'
+  const on  = 'bg-forest/10 text-forest hover:bg-forest/15 hover:text-forest'
+  const sep = <div className="w-px h-5 bg-line mx-1 shrink-0" />
+
+  const isParagraph = fmt.block === '' || fmt.block === 'p' || fmt.block === 'div'
+  const currentBlock = isParagraph
+    ? headingOptions[0]
+    : headingOptions.find(o => o.tag === fmt.block)
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+
+      {/* ── Toolbar ── */}
+      <div className="flex items-center gap-0.5 border-b border-line bg-surface-2 px-2 py-1.5 shrink-0 flex-wrap">
+
+        {/* Group 1 — Inline formatting */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button type="button" title="Bold" onMouseDown={e => e.preventDefault()} onClick={() => exec('bold')} className={cx(btn, fmt.bold && on)}>
+            <span className="font-bold text-[13px] leading-none">B</span>
+          </button>
+          <button type="button" title="Italic" onMouseDown={e => e.preventDefault()} onClick={() => exec('italic')} className={cx(btn, fmt.italic && on)}>
+            <span className="italic text-[13px] leading-none">I</span>
+          </button>
+          <button type="button" title="Strikethrough" onMouseDown={e => e.preventDefault()} onClick={() => exec('strikeThrough')} className={cx(btn, fmt.strike && on)}>
+            <Strikethrough className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {sep}
+
+        {/* Group 2 — Heading dropdown */}
+        <div className="relative shrink-0" ref={headingMenuRef}>
+          <button
+            type="button"
+            title="Text style"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => setIsHeadingOpen(v => !v)}
+            className={cx(
+              'flex items-center gap-1 h-7 px-2 rounded text-xs font-medium transition-colors hover:bg-surface-0 active:scale-95 cursor-pointer',
+              currentBlock && currentBlock.tag !== 'p' ? 'text-forest bg-forest/10 hover:bg-forest/15' : 'text-ink-2 hover:text-ink-1',
+            )}
+          >
+            {currentBlock?.label ?? 'Paragraph'}
+            <ChevronDown className="h-3 w-3 shrink-0" />
+          </button>
+
+          {isHeadingOpen && (
+            <div className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-line bg-surface-1 shadow-lg z-50 py-1">
+              {headingOptions.map(opt => {
+                const isActive = opt.tag === 'p' ? isParagraph : fmt.block === opt.tag
+                return (
+                  <button
+                    key={opt.tag}
+                    type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { exec('formatBlock', opt.tag); setIsHeadingOpen(false) }}
+                    className={cx('w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-surface-2 cursor-pointer', isActive && 'bg-forest/8')}
+                  >
+                    <span className="w-4 shrink-0 flex items-center justify-center">
+                      {isActive && <Check className="h-3 w-3 text-forest" />}
+                    </span>
+                    <span className={opt.previewClass}>{opt.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {sep}
+
+        {/* Group 3 — Lists */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button type="button" title="Bullet list" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertUnorderedList')} className={cx(btn, fmt.ul && on)}>
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Numbered list" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertOrderedList')} className={cx(btn, fmt.ol && on)}>
+            <ListOrdered className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {sep}
+
+        {/* Group 4 — Alignment */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button type="button" title="Align left" onMouseDown={e => e.preventDefault()} onClick={() => exec('justifyLeft')} className={cx(btn, fmt.alignLeft && on)}>
+            <AlignLeft className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Align center" onMouseDown={e => e.preventDefault()} onClick={() => exec('justifyCenter')} className={cx(btn, fmt.alignCenter && on)}>
+            <AlignCenter className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Align right" onMouseDown={e => e.preventDefault()} onClick={() => exec('justifyRight')} className={cx(btn, fmt.alignRight && on)}>
+            <AlignRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {sep}
+
+        {/* Group 5 — Block elements */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button type="button" title="Blockquote" onMouseDown={e => e.preventDefault()} onClick={() => exec('formatBlock', 'blockquote')} className={cx(btn, fmt.block === 'blockquote' && on)}>
+            <Quote className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Inline code" onMouseDown={e => e.preventDefault()} onClick={wrapCode} className={cx(btn, fmt.code && on)}>
+            <Code className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+      </div>
+
+      {/* ── Editable body ── */}
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={syncContent}
+        onPaste={e => {
+          e.preventDefault()
+          document.execCommand('insertText', false, e.clipboardData.getData('text/plain'))
+          syncContent()
+        }}
+        className="note-rich-body min-h-0 flex-1 overflow-y-auto px-8 py-5 text-base leading-7 text-ink-1 outline-none"
+        data-placeholder="Start writing…"
+        spellCheck
+        aria-label="Note body"
+      />
+    </div>
+  )
+}
+
+export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
   const [notes, setNotes] = useState<LocalNote[]>([])
+  const [draftNote, setDraftNote] = useState<LocalNote | null>(null)
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [mobilePane, setMobilePane] = useState<'list' | 'editor'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  const [hideEditor, setHideEditor] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') return 288
+    const saved = localStorage.getItem('mypartner-notes-sidebar-width')
+    return saved ? Math.max(240, Math.min(560, parseInt(saved, 10))) : 288
+  })
+  const isDragging = useRef(false)
+  const dragStartX = useRef(0)
+  const dragStartW = useRef(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
 
   // Ref so callbacks can read current notes without being recreated on every render
   const notesRef = useRef<LocalNote[]>([])
   notesRef.current = notes
+  const draftNoteRef = useRef<LocalNote | null>(null)
+  draftNoteRef.current = draftNote
 
   // Per-note debounce timers for the sync trigger
   const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -131,10 +427,44 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
     return () => timers.forEach(t => clearTimeout(t))
   }, [])
 
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    dragStartX.current = e.clientX
+    dragStartW.current = sidebarWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const next = Math.max(240, Math.min(560, dragStartW.current + e.clientX - dragStartX.current))
+      setSidebarWidth(next)
+    }
+    const onUp = () => {
+      if (!isDragging.current) return
+      isDragging.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setSidebarWidth(w => {
+        localStorage.setItem('mypartner-notes-sidebar-width', String(w))
+        return w
+      })
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
   useEffect(() => {
     if (activeNoteId && notes.some(note => note.localId === activeNoteId)) return
+    if (activeNoteId && draftNote?.localId === activeNoteId) return
     setActiveNoteId(notes[0]?.localId ?? null)
-  }, [activeNoteId, notes])
+  }, [activeNoteId, draftNote, notes])
 
   useEffect(() => { if (!activeNoteId) setMobilePane('list') }, [activeNoteId])
 
@@ -144,15 +474,66 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     }), [notes])
 
+  const visibleNotes = useMemo(() => {
+    if (!draftNote) return sortedNotes
+    return [draftNote, ...sortedNotes.filter(note => note.localId !== draftNote.localId)]
+  }, [draftNote, sortedNotes])
+
   const filteredNotes = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    if (!needle) return sortedNotes
-    return sortedNotes.filter(n => `${n.title} ${n.body}`.toLowerCase().includes(needle))
-  }, [query, sortedNotes])
+    if (!needle) return visibleNotes
+    return visibleNotes.filter(n => `${n.title} ${stripHtml(n.body)}`.toLowerCase().includes(needle))
+  }, [query, visibleNotes])
 
-  const activeNote = notes.find(n => n.localId === activeNoteId) ?? null
+  const activeNote = notes.find(n => n.localId === activeNoteId)
+    ?? (draftNote?.localId === activeNoteId ? draftNote : null)
 
-  const addNote = useCallback(async () => {
+  const discardIfEmpty = useCallback((localId: string) => {
+    const draft = draftNoteRef.current
+    if (draft?.localId === localId) {
+      if (!noteHasContent(draft)) {
+        draftNoteRef.current = null
+        setDraftNote(null)
+      }
+      return
+    }
+
+    const note = notesRef.current.find(n => n.localId === localId)
+    if (!note || noteHasContent(note)) return
+
+    notesRef.current = notesRef.current.filter(n => n.localId !== localId)
+    setNotes(curr => curr.filter(n => n.localId !== localId))
+    const timer = syncTimers.current.get(localId)
+    if (timer) clearTimeout(timer)
+    syncTimers.current.delete(localId)
+
+    if (!note.serverId) {
+      void idbDelete(localId).catch(() => undefined)
+      return
+    }
+
+    void saveNote({
+      ...note,
+      deletedAt: new Date().toISOString(),
+      syncStatus: 'pending',
+      operation: 'delete',
+    })
+      .then(() => runSync())
+      .catch(() => {
+        toast.error('Could not remove empty note')
+        void refreshFromIdb()
+      })
+  }, [refreshFromIdb, runSync])
+
+  const selectNote = useCallback((localId: string) => {
+    if (activeNoteId && activeNoteId !== localId) discardIfEmpty(activeNoteId)
+    setActiveNoteId(localId)
+    setMobilePane('editor')
+  }, [activeNoteId, discardIfEmpty])
+
+  const addNote = useCallback(() => {
+    if (activeNoteId) discardIfEmpty(activeNoteId)
+    setQuery('')
     const now = new Date().toISOString()
     const note: LocalNote = {
       localId: uuidv4(),
@@ -167,23 +548,17 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
       operation: 'create',
       version: 1,
     }
-    try {
-      await saveNote(note)
-    } catch {
-      toast.error('Could not save note locally')
-      return
-    }
-    setNotes(curr => [note, ...curr])
+    setDraftNote(note)
     setActiveNoteId(note.localId)
     setMobilePane('editor')
-    void runSync()
-  }, [ownerEmail, runSync])
+  }, [activeNoteId, discardIfEmpty, ownerEmail])
 
   const updateNote = useCallback((
     localId: string,
     updates: Partial<Pick<LocalNote, 'title' | 'body' | 'color' | 'pinned'>>,
   ) => {
     const existing = notesRef.current.find(n => n.localId === localId)
+      ?? (draftNoteRef.current?.localId === localId ? draftNoteRef.current : null)
     if (!existing) return
 
     const updated: LocalNote = {
@@ -196,7 +571,34 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
       version: existing.version + 1,
     }
 
-    setNotes(curr => curr.map(n => n.localId === localId ? updated : n))
+    const isDraft = draftNoteRef.current?.localId === localId
+    const hasContent = noteHasContent(updated)
+
+    if (!hasContent) {
+      if (isDraft) {
+        draftNoteRef.current = updated
+        setDraftNote(updated)
+      } else {
+        const nextNotes = notesRef.current.map(n => n.localId === localId ? updated : n)
+        notesRef.current = nextNotes
+        setNotes(nextNotes)
+      }
+      const timer = syncTimers.current.get(localId)
+      if (timer) clearTimeout(timer)
+      syncTimers.current.delete(localId)
+      return
+    }
+
+    if (isDraft) {
+      draftNoteRef.current = null
+      notesRef.current = [updated, ...notesRef.current]
+      setDraftNote(null)
+      setNotes(curr => [updated, ...curr])
+    } else {
+      notesRef.current = notesRef.current.map(n => n.localId === localId ? updated : n)
+      setNotes(curr => curr.map(n => n.localId === localId ? updated : n))
+    }
+
     void saveNote(updated).catch(() => {
       toast.error('Could not save note locally')
       void refreshFromIdb()
@@ -213,9 +615,16 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
 
   const handleDelete = useCallback(async () => {
     const note = notesRef.current.find(n => n.localId === activeNoteId)
+      ?? (draftNoteRef.current?.localId === activeNoteId ? draftNoteRef.current : null)
     if (!note) return
 
     const localId = note.localId
+    if (draftNoteRef.current?.localId === localId) {
+      setDraftNote(null)
+      setActiveNoteId(notesRef.current[0]?.localId ?? null)
+      return
+    }
+
     // Optimistically remove from UI
     setNotes(curr => {
       const next = curr.filter(n => n.localId !== localId)
@@ -262,14 +671,29 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
     <main className="flex min-h-0 flex-1 overflow-hidden bg-surface-0 text-ink-1">
 
       {/* ── Sidebar ── */}
-      <aside className={cx(
-        'flex-col border-r border-line bg-surface-1 overflow-hidden',
-        'w-full md:w-72 md:shrink-0',
-        mobilePane === 'editor' ? 'hidden md:flex' : 'flex',
-      )}>
+      <aside
+        className={cx(
+          'notes-sidebar flex-col border-line bg-surface-1 overflow-hidden',
+          hideEditor ? 'border-r-0 md:w-full!' : 'border-r',
+          mobilePane === 'editor' ? 'hidden md:flex' : 'flex',
+          'w-full',
+        )}
+        style={{ '--notes-sidebar-w': `${sidebarWidth}px` } as React.CSSProperties}
+      >
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-line shrink-0">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-line shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              if (activeNoteId) discardIfEmpty(activeNoteId)
+              onNavigate('/portal/home')
+            }}
+            title="Back to home"
+            className="flex h-7 w-7 items-center justify-center rounded text-ink-3 transition hover:bg-surface-2 hover:text-ink-1 active:scale-95 shrink-0 cursor-pointer"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold text-ink-1 uppercase tracking-wider">Notes</h1>
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -281,9 +705,29 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
           </div>
           <button
             type="button"
+            onClick={() => setViewMode(v => v === 'list' ? 'grid' : 'list')}
+            title={viewMode === 'list' ? 'Thumb view' : 'List view'}
+            className="flex h-7 w-7 items-center justify-center rounded text-ink-3 transition hover:bg-surface-2 hover:text-ink-1 active:scale-95 shrink-0 cursor-pointer"
+          >
+            {viewMode === 'list'
+              ? <LayoutGrid className="h-3.5 w-3.5" />
+              : <LayoutList className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setHideEditor(v => !v)}
+            title={hideEditor ? 'Show editor' : 'Hide editor'}
+            className="hidden md:flex h-7 w-7 items-center justify-center rounded text-ink-3 transition hover:bg-surface-2 hover:text-ink-1 active:scale-95 shrink-0"
+          >
+            {hideEditor
+              ? <PanelRightOpen className="h-3.5 w-3.5" />
+              : <PanelRightClose className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
             onClick={addNote}
             title="New note"
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-forest text-white transition hover:bg-forest-strong active:scale-95 shrink-0"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-forest text-white transition hover:bg-forest-strong active:scale-95 shrink-0 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -310,6 +754,17 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
               <FileText className="h-5 w-5 text-ink-3" />
               <span className="text-xs text-ink-3">No notes found</span>
             </div>
+          ) : viewMode === 'grid' ? (
+            <div className={cx('grid gap-2 pt-2', hideEditor ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2')}>
+              {filteredNotes.map(note => (
+                <NoteThumb
+                  key={note.localId}
+                  note={note}
+                  active={note.localId === activeNoteId}
+                  onClick={() => selectNote(note.localId)}
+                />
+              ))}
+            </div>
           ) : (
             <>
               {pinnedNotes.length > 0 && (
@@ -320,7 +775,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                       key={note.localId}
                       note={note}
                       active={note.localId === activeNoteId}
-                      onClick={() => { setActiveNoteId(note.localId); setMobilePane('editor') }}
+                      onClick={() => selectNote(note.localId)}
                     />
                   ))}
                 </>
@@ -335,7 +790,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                       key={note.localId}
                       note={note}
                       active={note.localId === activeNoteId}
-                      onClick={() => { setActiveNoteId(note.localId); setMobilePane('editor') }}
+                      onClick={() => selectNote(note.localId)}
                     />
                   ))}
                 </>
@@ -345,10 +800,21 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
         </div>
       </aside>
 
+      {/* Resize handle — desktop only */}
+      {!hideEditor && (
+        <div
+          className="hidden md:flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-line hover:bg-forest/40 transition-colors group"
+          onMouseDown={startResize}
+        >
+          <div className="h-8 w-0.5 rounded-full bg-ink-3/40 group-hover:bg-forest/70 transition-colors" />
+        </div>
+      )}
+
       {/* ── Editor ── */}
       <section className={cx(
         'flex-col overflow-hidden bg-surface-0 flex-1 min-w-0',
         mobilePane === 'list' ? 'hidden md:flex' : 'flex',
+        hideEditor ? 'md:hidden' : '',
       )}>
         {activeNote ? (
           <div className="flex min-h-0 flex-1 flex-col">
@@ -361,7 +827,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                 type="button"
                 onClick={() => setMobilePane('list')}
                 title="Back to notes"
-                className="md:hidden flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-2 hover:bg-surface-0 transition-colors active:scale-95"
+                className="md:hidden flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-2 hover:bg-surface-0 transition-colors active:scale-95 cursor-pointer"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
               </button>
@@ -375,7 +841,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                     type="button"
                     title={colorLabel[c]}
                     onClick={() => updateNote(activeNote.localId, { color: c })}
-                    className="h-3.5 w-3.5 rounded-full transition hover:scale-125 active:scale-95 shrink-0"
+                    className="h-3.5 w-3.5 rounded-full transition hover:scale-125 active:scale-95 shrink-0 cursor-pointer"
                     style={{
                       backgroundColor: accent[c],
                       outline: activeNote.color === c ? `2px solid ${accent[c]}` : 'none',
@@ -393,7 +859,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                 onClick={() => updateNote(activeNote.localId, { pinned: !activeNote.pinned })}
                 title={activeNote.pinned ? 'Unpin' : 'Pin note'}
                 className={cx(
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-forest/10 active:scale-95',
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-forest/10 active:scale-95 cursor-pointer',
                   activeNote.pinned ? 'text-forest' : 'text-ink-3 hover:text-forest',
                 )}
               >
@@ -405,7 +871,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                 type="button"
                 onClick={handleDelete}
                 title="Delete note"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 transition-colors hover:bg-crimson/10 hover:text-crimson active:scale-95"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 transition-colors hover:bg-crimson/10 hover:text-crimson active:scale-95 cursor-pointer"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -426,16 +892,14 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
                 aria-label="Note title"
               />
               <div className="mx-8 h-px shrink-0 bg-line" />
-              <textarea
-                className="min-h-0 flex-1 resize-none border-0 bg-transparent px-8 py-5 text-base leading-7 text-ink-1 outline-none placeholder:text-ink-3"
+              <RichBodyEditor
+                noteId={activeNote.localId}
                 value={activeNote.body}
-                onChange={e => updateNote(activeNote.localId, { body: e.target.value })}
-                placeholder="Start writing…"
-                aria-label="Note body"
+                onChange={html => updateNote(activeNote.localId, { body: html })}
               />
               <div className="flex shrink-0 items-center justify-between border-t border-line px-8 py-2">
                 <span className="text-xs text-ink-3">
-                  {activeNote.body.trim().split(/\s+/).filter(Boolean).length} words
+                  {stripHtml(activeNote.body).split(/\s+/).filter(Boolean).length} words
                 </span>
                 <span
                   className="h-2 w-2 rounded-full opacity-70"
@@ -457,7 +921,7 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
             <button
               type="button"
               onClick={addNote}
-              className="flex items-center gap-1.5 rounded-lg bg-forest px-4 py-2 text-sm font-medium text-white transition hover:bg-forest-strong active:scale-[0.98]"
+              className="flex items-center gap-1.5 rounded-lg bg-forest px-4 py-2 text-sm font-medium text-white transition hover:bg-forest-strong active:scale-[0.98] cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               New Note
@@ -466,6 +930,45 @@ export default function NotesApp({ ownerEmail }: NotesAppProps) {
         )}
       </section>
     </main>
+  )
+}
+
+function NoteThumb({
+  note, active, onClick,
+}: {
+  note: LocalNote
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'flex flex-col rounded-xl border text-left transition active:scale-[0.97] min-h-32.5 cursor-pointer',
+        active
+          ? 'border-forest/30 bg-forest/5 shadow-sm'
+          : 'border-line bg-surface-1 hover:border-forest/20 hover:shadow-sm',
+      )}
+    >
+      {/* Color strip */}
+      <div
+        className="h-1.5 w-full rounded-t-xl shrink-0"
+        style={{ backgroundColor: accent[note.color] }}
+      />
+      <div className="flex flex-1 flex-col gap-1 px-3 py-2.5 min-h-0">
+        <div className="flex items-start gap-1">
+          <span className="flex-1 truncate text-[13px] font-semibold leading-snug text-ink-1">
+            {note.title.trim() || 'Untitled'}
+          </span>
+          {note.pinned && <Pin className="h-3 w-3 shrink-0 text-forest mt-0.5" />}
+        </div>
+        <p className="line-clamp-3 text-[11px] leading-relaxed text-ink-3 flex-1">
+          {stripHtml(note.body) || 'No content'}
+        </p>
+        <p className="mt-auto text-[10px] text-ink-3 pt-1">{formatDate(note.updatedAt)}</p>
+      </div>
+    </button>
   )
 }
 
@@ -481,7 +984,7 @@ function NoteCard({
       type="button"
       onClick={onClick}
       className={cx(
-        'group w-full rounded-lg border px-3 py-2.5 text-left transition mb-0.5',
+        'group w-full rounded-lg border px-3 py-2.5 text-left transition mb-0.5 cursor-pointer',
         active
           ? 'border-forest/25 bg-forest/5 shadow-sm'
           : 'border-transparent hover:border-line hover:bg-surface-2',
@@ -501,7 +1004,7 @@ function NoteCard({
             <SyncBadge status={note.syncStatus} />
           </div>
           <p className="truncate text-xs text-ink-3 leading-snug">
-            {note.body.replace(/\s+/g, ' ').trim() || 'No content'}
+            {stripHtml(note.body) || 'No content'}
           </p>
           <p className="mt-1 text-[10px] text-ink-3">{formatDate(note.updatedAt)}</p>
         </div>

@@ -24,20 +24,20 @@ export default function InstallPrompt() {
   return (
     <div
       role="banner"
-      className="flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-2 text-xs font-medium text-[var(--color-ink-2)]"
+      className="flex items-center gap-3 border-b border-line bg-surface-2 px-4 py-2 text-xs font-medium text-ink-2"
     >
-      <Download className="h-3.5 w-3.5 shrink-0 text-[var(--color-ink-1)]" aria-hidden="true" />
+      <Download className="h-3.5 w-3.5 shrink-0 text-ink-1" aria-hidden="true" />
       <span className="flex-1">Install myPartner Portal for quick offline access.</span>
       <button
         onClick={handleInstall}
-        className="rounded px-2.5 py-1 text-xs font-semibold bg-[var(--color-ink-1)] text-[var(--color-surface-1)] hover:opacity-80 transition-opacity"
+        className="rounded px-2.5 py-1 text-xs font-semibold bg-ink-1 text-surface-1 hover:opacity-80 transition-opacity cursor-pointer"
       >
         Install
       </button>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss install prompt"
-        className="rounded p-0.5 hover:bg-[var(--color-line)] transition-colors"
+        className="rounded p-0.5 hover:bg-line transition-colors cursor-pointer"
       >
         <X className="h-3.5 w-3.5" />
       </button>
