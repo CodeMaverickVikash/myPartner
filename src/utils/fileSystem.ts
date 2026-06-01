@@ -13,6 +13,7 @@ export interface FileModificationResult {
 }
 
 export const isFileSystemAccessSupported = () => {
+  if (typeof window === 'undefined') return false
   return 'showOpenFilePicker' in window && 'showSaveFilePicker' in window
 }
 

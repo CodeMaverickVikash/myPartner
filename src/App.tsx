@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState } from 'react'
 import { Toaster } from 'react-hot-toast'
 import './App.css'
@@ -16,9 +18,14 @@ import UpdateAvailableToast from './components/pwa/UpdateAvailableToast'
 const AUTH_KEY = 'mypartner-auth-session'
 const THEME_KEY = 'mypartner-theme'
 
-const getPath = () => window.location.pathname.replace(/\/+$/, '') || '/'
+const getPath = () => {
+  if (typeof window === 'undefined') return '/'
+  return window.location.pathname.replace(/\/+$/, '') || '/'
+}
 
 const readSession = (): AuthSession | null => {
+  if (typeof window === 'undefined') return null
+
   try {
     const value = localStorage.getItem(AUTH_KEY)
     return value ? JSON.parse(value) as AuthSession : null
@@ -28,6 +35,8 @@ const readSession = (): AuthSession | null => {
 }
 
 const readTheme = (): ThemeMode => {
+  if (typeof window === 'undefined') return 'light'
+
   const savedTheme = localStorage.getItem(THEME_KEY)
   if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme
   const prefersDark = window.matchMedia
@@ -37,6 +46,7 @@ const readTheme = (): ThemeMode => {
 }
 
 const navigateTo = (nextPath: string, replace = false) => {
+  if (typeof window === 'undefined') return
   if (window.location.pathname === nextPath) return
 
   if (replace) {
@@ -67,25 +77,39 @@ const getActiveFeatureId = (path: string): FeatureId => {
 }
 
 function App() {
-  const [path, setPath] = useState(getPath)
-  const [session, setSession] = useState<AuthSession | null>(() => readSession())
-  const [theme, setTheme] = useState<ThemeMode>(() => readTheme())
+  const [mounted, setMounted] = useState(false)
+  const [path, setPath] = useState('/')
+  const [session, setSession] = useState<AuthSession | null>(null)
+  const [theme, setTheme] = useState<ThemeMode>('light')
 
   useEffect(() => {
-    const handlePopState = () => setPath(getPath())
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
+    setPath(getPath())
+    setSession(readSession())
+    setTheme(readTheme())
+    setMounted(true)
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
+    if (!mounted) return
+
+    const handlePopState = () => setPath(getPath())
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [mounted])
 
   useEffect(() => {
+    if (!mounted) return
+
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(THEME_KEY, theme)
+  }, [mounted, theme])
+
+  useEffect(() => {
+    if (!mounted) return
+
     const redirectPath = getRedirectPath(path, Boolean(session))
     if (redirectPath) navigateTo(redirectPath, true)
-  }, [path, session])
+  }, [mounted, path, session])
 
   const handleLogin = (nextSession: AuthSession) => {
     localStorage.setItem(AUTH_KEY, JSON.stringify(nextSession))
@@ -101,6 +125,10 @@ function App() {
 
   const toggleTheme = () => setTheme(currentTheme => currentTheme === 'dark' ? 'light' : 'dark')
   const activeFeatureId = getActiveFeatureId(path)
+
+  if (!mounted) {
+    return <div className="min-h-screen flex-1 bg-[var(--color-surface-0)]" />
+  }
 
   return (
     <>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import Sidebar from '../Sidebar'
 import Content from '../Content'
@@ -14,7 +14,9 @@ type WatcherMap = Map<string, () => void>
 function MarkdownWrapper() {
   const [files, setFiles] = useState<FileMap>(new Map())
   const [currentFileId, setCurrentFileId] = useState<string | null>(null)
-  const [sidebarVisible, setSidebarVisible] = useState(() => window.innerWidth >= 768)
+  const [sidebarVisible, setSidebarVisible] = useState(() => (
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  ))
   const [fileHandles, setFileHandles] = useState<FileHandleMap>(new Map())
   const [fileModifiedTimes, setFileModifiedTimes] = useState<Map<string, number>>(new Map())
   const watchersRef = useRef<WatcherMap>(new Map())
@@ -106,7 +108,7 @@ function MarkdownWrapper() {
     }))
   }
 
-  const handleExternalFileChange = (fileId: string, newContent: string, newLastModified: number) => {
+  const handleExternalFileChange = useCallback((fileId: string, newContent: string, newLastModified: number) => {
     const file = files.get(fileId)
 
     if (file) {
@@ -125,15 +127,17 @@ function MarkdownWrapper() {
         icon: 'Reloaded'
       })
     }
-  }
+  }, [files, fileModifiedTimes])
 
   useEffect(() => {
+    const watchers = watchersRef.current
+
     fileHandles.forEach((fileHandle, fileId) => {
       const file = files.get(fileId)
       if (file && file.isSystemFile) {
         const lastModified = fileModifiedTimes.get(fileId) ?? Date.now()
 
-        const existingWatcher = watchersRef.current.get(fileId)
+        const existingWatcher = watchers.get(fileId)
         if (existingWatcher) existingWatcher()
 
         const stopWatcher = watchFile(
@@ -145,15 +149,15 @@ function MarkdownWrapper() {
           2000
         )
 
-        watchersRef.current.set(fileId, stopWatcher)
+        watchers.set(fileId, stopWatcher)
       }
     })
 
     return () => {
-      watchersRef.current.forEach(stopWatcher => stopWatcher())
-      watchersRef.current.clear()
+      watchers.forEach(stopWatcher => stopWatcher())
+      watchers.clear()
     }
-  }, [fileHandles, files, fileModifiedTimes])
+  }, [fileHandles, files, fileModifiedTimes, handleExternalFileChange])
 
   const handleOpenFromSystem = async () => {
     if (!isFileSystemAccessSupported()) {

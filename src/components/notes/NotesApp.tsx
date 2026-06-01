@@ -38,6 +38,8 @@ const createNote = (): Note => {
 }
 
 const readStoredNotes = (): Note[] => {
+  if (typeof window === 'undefined') return []
+
   try {
     const value = localStorage.getItem(STORAGE_KEY)
     if (!value) return []

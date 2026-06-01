@@ -1,39 +1,45 @@
-# Dependencies
-node_modules/
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Build output (Vercel will build this)
-dist/
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# Vite
-.vite/
+# testing
+/coverage
 
-# Environment variables
-.env
-.env.local
-.env.production
+# next.js
+/.next/
+/out/
 
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# production
+/build
 
-# OS
+# misc
 .DS_Store
-Thumbs.db
+*.pem
 
-# Logs
-*.log
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
+*.log
 
-# Old vanilla JS version
-index-vanilla.html
+# local pnpm store
+/.pnpm-store/
 
-# Vercel
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
 .vercel
 
-package-lock.json
-yarn.lock
+# typescript
+*.tsbuildinfo
+next-env.d.ts

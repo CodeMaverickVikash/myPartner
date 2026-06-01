@@ -7,7 +7,7 @@ const DISMISS_KEY = 'mypartner-pwa-install-dismissed'
 export default function InstallPrompt() {
   const { canInstall, install } = useInstallPrompt()
   const [dismissed, setDismissed] = useState<boolean>(
-    () => localStorage.getItem(DISMISS_KEY) === '1'
+    () => typeof window !== 'undefined' && localStorage.getItem(DISMISS_KEY) === '1'
   )
 
   if (!canInstall || dismissed) return null

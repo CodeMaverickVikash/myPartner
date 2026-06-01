@@ -1,29 +1,61 @@
 import { useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { useRegisterSW } from 'virtual:pwa-register/react'
 
 export default function UpdateAvailableToast() {
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW()
-
   useEffect(() => {
-    if (!needRefresh) return
+    if (!('serviceWorker' in navigator)) return
 
-    toast(
-      () => (
-        <button
-          type="button"
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
-          onClick={() => void updateServiceWorker(true)}
-        >
-          New version available — tap to update
-        </button>
-      ),
-      { duration: Infinity, id: 'pwa-update' },
-    )
-  }, [needRefresh, updateServiceWorker])
+    let isMounted = true
+
+    const showUpdateToast = (registration: ServiceWorkerRegistration) => {
+      toast(
+        () => (
+          <button
+            type="button"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+            onClick={() => registration.waiting?.postMessage({ type: 'SKIP_WAITING' })}
+          >
+            New version available - tap to update
+          </button>
+        ),
+        { duration: Infinity, id: 'pwa-update' },
+      )
+    }
+
+    const reloadOnControllerChange = () => {
+      window.location.reload()
+    }
+
+    void navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((registration) => {
+      if (!isMounted) return
+
+      if (!navigator.serviceWorker.controller) {
+        navigator.serviceWorker.addEventListener('controllerchange', reloadOnControllerChange, { once: true })
+      }
+
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        showUpdateToast(registration)
+      }
+
+      registration.addEventListener('updatefound', () => {
+        const installingWorker = registration.installing
+        if (!installingWorker) return
+
+        installingWorker.addEventListener('statechange', () => {
+          if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateToast(registration)
+          }
+        })
+      })
+    }).catch((error) => {
+      console.error('Service worker registration failed:', error)
+    })
+
+    return () => {
+      isMounted = false
+      navigator.serviceWorker.removeEventListener('controllerchange', reloadOnControllerChange)
+    }
+  }, [])
 
   return null
 }
