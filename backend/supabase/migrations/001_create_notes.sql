@@ -37,8 +37,7 @@ $$;
 create index if not exists notes_owner_updated_idx
   on public.notes (owner_email, pinned desc, updated_at desc);
 
-create unique index if not exists notes_owner_title_unique_idx
-  on public.notes (owner_email, title);
+drop index if exists public.notes_owner_title_unique_idx;
 
 create or replace function public.set_notes_updated_at()
 returns trigger
