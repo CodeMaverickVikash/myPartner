@@ -140,6 +140,8 @@ API_STATELESS=false
 
 Set `API_STATELESS=true` for stateless/serverless API deployments such as Vercel.
 
+The standalone API project also includes `apps/api/vercel.json`. Import `apps/api` as a separate Vercel project when you want the NestJS API deployed independently from the Next.js web app.
+
 Configure this environment variable for the Next.js frontend when it should call the NestJS backend:
 
 ```bash
@@ -161,3 +163,33 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 ```
 
 3. Redeploy after adding or changing environment variables.
+
+## Docker
+
+Vercel does not run Docker images directly. The Docker setup in this repo is for reproducible local builds and for producing Vercel prebuilt output inside a container.
+
+Build and run the production web container locally:
+
+```bash
+pnpm docker:build
+docker run --rm -p 3000:3000 mypartner:local
+```
+
+Run web and API containers together:
+
+```bash
+pnpm docker:up
+```
+
+Build Vercel output in Docker:
+
+```bash
+pnpm docker:build:vercel
+pnpm docker:vercel-build
+```
+
+After `vercel build` creates `.vercel/output`, deploy it from the host with:
+
+```bash
+vercel deploy --prebuilt --prod
+```

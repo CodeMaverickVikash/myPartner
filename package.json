@@ -2,6 +2,7 @@
   "name": "mypartner",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.33.4",
   "scripts": {
     "dev": "pnpm --filter @mypartner/web dev",
     "dev:web": "pnpm --filter @mypartner/web dev",
@@ -15,7 +16,11 @@
     "start": "pnpm --filter @mypartner/web start",
     "start:api": "pnpm --filter @mypartner/api start",
     "lint": "pnpm --filter @mypartner/web lint",
-    "typecheck": "pnpm -r --filter \"@mypartner/*\" typecheck"
+    "typecheck": "pnpm -r --filter \"@mypartner/*\" typecheck",
+    "docker:build": "docker build -t mypartner:local .",
+    "docker:build:vercel": "docker build -f Dockerfile.vercel -t mypartner-vercel-build:local .",
+    "docker:up": "docker compose up --build",
+    "docker:vercel-build": "docker compose run --rm vercel-build"
   },
   "devDependencies": {
     "@types/node": "^20",
