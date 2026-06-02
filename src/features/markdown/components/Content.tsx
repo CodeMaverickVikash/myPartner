@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Menu, ChevronUp, FileText, Link, FolderOpen, Maximize2, Minimize2, Save } from 'lucide-react'
+import { Menu, ChevronUp, FileText, Link, FolderOpen, Maximize2, Minimize2, Save, Copy, Check } from 'lucide-react'
 import MarkdownViewer from './MarkdownViewer'
 import type { MarkdownFile } from '../types'
 
@@ -17,6 +17,7 @@ function Content({ file, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarV
   const [scrollPosition, setScrollPosition] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isDirty, setIsDirty] = useState(false)
+  const [copied, setCopied] = useState(false)
   const mainRef = useRef<HTMLElement | null>(null)
   const markdownViewerRef = useRef<HTMLDivElement | null>(null)
   const latestContentRef = useRef('')
@@ -90,10 +91,17 @@ function Content({ file, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarV
   }
   saveRef.current = handleSave
 
+  const handleCopyMarkdown = async () => {
+    if (!file) return
+    await navigator.clipboard.writeText(latestContentRef.current)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <main ref={mainRef} className="flex-1 flex flex-col bg-surface-1 overflow-hidden relative">
       {/* Toolbar */}
-      <div className="flex items-center px-3 py-1.5 bg-surface-2 border-b border-line gap-2 flex-wrap shrink-0">
+      <div className="sticky top-0 z-10 flex items-center px-3 py-1.5 bg-surface-2 border-b border-line gap-2 flex-wrap shrink-0">
         <button
           className="flex items-center justify-center cursor-pointer text-ink-2 transition-all duration-200 p-1.5 w-8 h-8 rounded-md hover:bg-surface-1 hover:text-forest active:scale-95 border border-line shrink-0"
           onClick={onToggleSidebar}
@@ -140,6 +148,16 @@ function Content({ file, onFileUpdate, onSaveToSystem, onToggleSidebar, sidebarV
             }`}
           >
             <Save className="w-4 h-4" />
+          </button>
+        )}
+
+        {file && (
+          <button
+            onClick={handleCopyMarkdown}
+            title="Copy markdown source"
+            className="flex items-center justify-center p-1.5 w-8 h-8 rounded-md border border-line transition-all duration-200 shrink-0 cursor-pointer text-ink-2 hover:bg-surface-1 hover:text-forest active:scale-95"
+          >
+            {copied ? <Check className="w-4 h-4 text-forest" /> : <Copy className="w-4 h-4" />}
           </button>
         )}
 

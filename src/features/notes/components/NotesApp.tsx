@@ -23,9 +23,11 @@ import {
   PinOff,
   Plus,
   Quote,
+  Redo2,
   Search,
   Strikethrough,
   Trash2,
+  Undo2,
   Wifi,
   WifiOff,
 } from 'lucide-react'
@@ -226,7 +228,19 @@ function RichBodyEditor({
     <div className="flex min-h-0 flex-1 flex-col">
 
       {/* ── Toolbar ── */}
-      <div className="flex items-center gap-0.5 border-b border-line bg-surface-2 px-2 py-1.5 shrink-0 flex-wrap">
+      <div className="sticky top-0 z-10 flex items-center gap-0.5 border-b border-line bg-surface-2 px-2 py-1.5 shrink-0 overflow-x-auto">
+
+        {/* Group 0 — Undo / Redo */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button type="button" title="Undo" onMouseDown={e => e.preventDefault()} onClick={() => exec('undo')} className={btn}>
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" title="Redo" onMouseDown={e => e.preventDefault()} onClick={() => exec('redo')} className={btn}>
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {sep}
 
         {/* Group 1 — Inline formatting */}
         <div className="flex items-center gap-0.5 shrink-0">
@@ -334,7 +348,7 @@ function RichBodyEditor({
           document.execCommand('insertText', false, e.clipboardData.getData('text/plain'))
           syncContent()
         }}
-        className="note-rich-body min-h-0 flex-1 overflow-y-auto px-8 py-5 text-base leading-7 text-ink-1 outline-none"
+        className="note-rich-body min-h-0 flex-1 overflow-y-auto px-4 py-4 text-base leading-7 text-ink-1 outline-none sm:px-8 sm:py-5"
         data-placeholder="Start writing…"
         spellCheck
         aria-label="Note body"
@@ -738,7 +752,7 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
           <label className="flex items-center gap-2 rounded-lg border border-line bg-surface-0 px-3 py-1.5 text-ink-3 transition focus-within:border-forest focus-within:ring-2 focus-within:ring-forest/20">
             <Search className="h-3.5 w-3.5 shrink-0" />
             <input
-              className="w-full bg-transparent text-xs text-ink-1 outline-none placeholder:text-ink-3"
+              className="w-full bg-transparent text-[16px] leading-none text-ink-1 outline-none placeholder:text-ink-3 sm:text-xs"
               type="search"
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -820,7 +834,7 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
           <div className="flex min-h-0 flex-1 flex-col">
 
             {/* Toolbar */}
-            <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5 shrink-0">
+            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5 shrink-0">
 
               {/* Back — mobile only */}
               <button
@@ -885,19 +899,19 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
             {/* Writing surface */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-1 border-l-2 border-l-forest/20 shadow-[-2px_0_0_0_rgba(0,0,0,0.04)]">
               <input
-                className="w-full shrink-0 border-0 bg-transparent px-8 pb-2 pt-6 text-[1.85rem] font-bold leading-tight text-ink-1 outline-none placeholder:text-ink-3"
+                className="w-full shrink-0 border-0 bg-transparent px-4 pb-2 pt-5 text-2xl font-bold leading-tight text-ink-1 outline-none placeholder:text-ink-3 sm:px-8 sm:pt-6 sm:text-[1.85rem]"
                 value={activeNote.title}
                 onChange={e => updateNote(activeNote.localId, { title: e.target.value })}
                 placeholder="Untitled"
                 aria-label="Note title"
               />
-              <div className="mx-8 h-px shrink-0 bg-line" />
+              <div className="mx-4 h-px shrink-0 bg-line sm:mx-8" />
               <RichBodyEditor
                 noteId={activeNote.localId}
                 value={activeNote.body}
                 onChange={html => updateNote(activeNote.localId, { body: html })}
               />
-              <div className="flex shrink-0 items-center justify-between border-t border-line px-8 py-2">
+              <div className="flex shrink-0 items-center justify-between border-t border-line px-4 py-2 sm:px-8">
                 <span className="text-xs text-ink-3">
                   {stripHtml(activeNote.body).split(/\s+/).filter(Boolean).length} words
                 </span>

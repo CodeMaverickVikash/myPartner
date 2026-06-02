@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import Sidebar from './components/Sidebar'
 import Content from './components/Content'
 import { loadFromLocalStorage, saveToLocalStorage } from './lib/storage'
+import { demoFile, DEMO_FILE_ID } from './lib/demo'
 import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported, watchFile } from './lib/file-system'
 import { getAllFileHandles, removeFileHandle, saveFileHandle } from './lib/indexed-db'
 import type { MarkdownFile } from './types'
@@ -41,6 +42,15 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
         })
         setFiles(filesMap)
 
+        // Restore selected file, default to demo if present
+        const savedId = localStorage.getItem('markdown-current-file-id')
+        const resolvedId = savedId && filesMap.has(savedId)
+          ? savedId
+          : filesMap.has(DEMO_FILE_ID)
+            ? DEMO_FILE_ID
+            : (filesMap.keys().next().value ?? null)
+        setCurrentFileId(resolvedId)
+
         const handles = await getAllFileHandles()
         setFileHandles(handles)
 
@@ -54,6 +64,10 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
           }
         }
         setFileModifiedTimes(modifiedTimes)
+      } else {
+        const seed: FileMap = new Map([[demoFile.id, demoFile]])
+        setFiles(seed)
+        setCurrentFileId(demoFile.id)
       }
     }
 
@@ -65,6 +79,12 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
       saveToLocalStorage('uploadedFiles', Array.from(files.values()))
     }
   }, [files])
+
+  useEffect(() => {
+    if (currentFileId) {
+      localStorage.setItem('markdown-current-file-id', currentFileId)
+    }
+  }, [currentFileId])
 
   const handleFileRemove = async (fileId: string) => {
     if (!confirm('Are you sure you want to remove this file?')) return

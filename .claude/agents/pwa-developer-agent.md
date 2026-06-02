@@ -48,20 +48,21 @@ When both agents work on the same feature (e.g. an offline banner), this agent o
 
 ## Project Context
 
-This agent is scoped to **MyPartner Portal** — a browser-only Vite + React SPA with no server or SSR.
+This agent is scoped to **MyPartner Portal** — a **Next.js App Router** full-stack app deployed on Vercel.
 
 Key facts:
-- Build tool: **Vite** (not Next.js, not CRA)
-- Deployed on **Vercel** with a SPA rewrite rule in `vercel.json` (`/* → /index.html`)
-- No backend — all storage is browser-local (localStorage, IndexedDB, File System Access API)
+- Framework: **Next.js (App Router)** — SSR-capable; not Vite, not CRA
+- Deployed on **Vercel** — Next.js framework preset, no manual SPA rewrite needed
+- Backend exists: `backend/` dir with Supabase handlers; API routes at `src/app/api/`
+- Notes synced to Supabase; markdown files are local-only (localStorage + IndexedDB)
 - Auth session stored in `localStorage` under key `mypartner-auth-session`
 - Theme stored under key `mypartner-theme`
-- Dev: `pnpm dev` | Build: `pnpm build` | Preview production: `pnpm preview`
-- Styling: Tailwind CSS v4 via `@theme` directive in `index.css` — do **not** touch `tailwind.config.js`
+- Dev: `pnpm dev` | Build: `pnpm build` | Serve production: `pnpm start`
+- Styling: Tailwind CSS v4 via `@theme` directive in `globals.css` — do **not** touch `tailwind.config.js`
 - CSS variables: `--color-surface-*`, `--color-ink-*`, `--color-line`, `--mp-*` — never hardcode colors
-- Logout must clear: `mypartner-auth-session`, `mypartner-theme`, `markdown-viewer-files`, `markdown-viewer-notes`, and any PWA-specific caches
+- Logout must clear: `mypartner-auth-session`, `mypartner-theme`, `uploadedFiles`, `mypartner-notes:<email>:cache`, `mypartner-notes:<email>:queue`, and any PWA-specific caches
 - `start_url` in manifest should be `/portal/markdown` (post-auth landing), not `/` (which redirects to `/login`)
-- Service worker scope must align with Vercel's SPA rewrite — test with `pnpm build && pnpm preview`
+- Service worker must be registered client-side (Next.js SSR cannot register SW server-side); test with `pnpm build && pnpm start`
 
 ---
 
@@ -454,32 +455,50 @@ Safe area example:
 
 ---
 
-## Vite SPA Standards
+## Next.js PWA Standards
 
-This project is a **Vite SPA** — no SSR, no server rendering.
+This project uses **Next.js App Router** — SSR-capable, deployed on Vercel. No Vite, no SPA rewrite.
 
 Rules:
 
-- Register the service worker in `main.tsx` or a dedicated `RegisterServiceWorker` component mounted in `App.tsx`.
-- Gate registration on `import.meta.env.PROD` (not `process.env.NODE_ENV`) — Vite uses `import.meta.env`.
-- `window` and browser APIs are always available — no SSR guards needed.
-- Test service worker behavior with `pnpm build && pnpm preview`, not `pnpm dev` (Vite dev server does not serve the SW the same way).
-- The Vercel `vercel.json` SPA rewrite (`/* → /index.html`) is already in place — ensure the SW scope (`/`) and `start_url` (`/portal/markdown`) align with it.
-- Put PWA utility code in `src/utils/pwa.ts`; types in `src/types.ts`.
+- Register the service worker client-side only — use a `'use client'` component with a `useEffect` so it never runs on the server.
+- Gate registration on `process.env.NODE_ENV === 'production'` (not Vite's `import.meta.env.PROD`).
+- Guard all `window`/`navigator` access inside `useEffect` — Next.js SSR runs without a browser context.
+- Test service worker behavior with `pnpm build && pnpm start`, not `pnpm dev` (Next.js dev mode does not serve the service worker the same way).
+- Next.js handles all routing natively — no `vercel.json` SPA rewrite needed. Ensure the SW scope (`/`) aligns with `start_url` (`/portal/markdown`).
+- Put PWA utility code in `src/features/pwa/`; types go in the relevant feature `types.ts`.
 
-Example registration:
+Example registration (place in `src/features/pwa/components/ServiceWorkerRegistrar.tsx`):
 
 ```tsx
-import { useEffect } from "react";
+'use client'
+import { useEffect } from 'react'
 
-export function RegisterServiceWorker() {
+export function ServiceWorkerRegistrar() {
   useEffect(() => {
-    if ("serviceWorker" in navigator && import.meta.env.PROD) {
-      navigator.serviceWorker.register("/sw.js");
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+      navigator.serviceWorker.register('/sw.js')
     }
-  }, []);
+  }, [])
 
-  return null;
+  return null
+}
+```
+
+Mount in `src/app/layout.tsx` (server component — the child is client-only via `'use client'`):
+
+```tsx
+import { ServiceWorkerRegistrar } from '@/features/pwa/components/ServiceWorkerRegistrar'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <ServiceWorkerRegistrar />
+      </body>
+    </html>
+  )
 }
 ```
 

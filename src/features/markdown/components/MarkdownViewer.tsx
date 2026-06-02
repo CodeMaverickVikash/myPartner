@@ -436,7 +436,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-surface-0 animate-fade-in">
       {editable && (
-        <div className="flex items-center border-b border-line bg-surface-2 shrink-0">
+        <div className="sticky top-0 z-10 flex items-center border-b border-line bg-surface-2 shrink-0">
           <div className="flex items-center px-3 py-1.5 gap-0.5 overflow-x-auto min-w-0">
             {toolbarGroups.map((group, groupIndex) => (
               <div key={groupIndex} className="flex items-center gap-0.5 shrink-0">

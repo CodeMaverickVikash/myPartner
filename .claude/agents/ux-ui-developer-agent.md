@@ -159,29 +159,47 @@ Organize UI clearly and consistently.
 
 ```txt
 src/
- ├── App.tsx                          # Root: routing + auth state + theme
- ├── types.ts                         # All shared interfaces (extend here)
- ├── index.css                        # @theme tokens, dark mode, markdown styles
- ├── components/
- │    ├── mypartner/
- │    │    └── MyPartnerShell.tsx     # Auth shell + portal layout + featureRegistry
- │    ├── notes/
- │    │    └── NotesApp.tsx
- │    ├── markdown/
- │    │    └── MarkdownWrapper.tsx
- │    ├── pwa/                        # PWA components (if added)
- │    ├── Sidebar.tsx
- │    ├── Content.tsx
- │    ├── MarkdownEditor.tsx
- │    └── MarkdownViewer.tsx
- └── utils/
-      ├── fileSystem.ts
-      ├── indexedDB.ts
-      ├── markdown.ts
-      └── storage.ts
+├── app/                                     # Next.js App Router
+│   ├── layout.tsx                           # Root layout: metadata, viewport, PWA tags
+│   ├── globals.css                          # Global CSS: @theme tokens, dark mode, markdown styles
+│   ├── manifest.ts                          # PWA manifest
+│   └── [[...path]]/page.tsx                 # Catch-all route → PortalApp
+├── features/
+│   ├── portal/
+│   │   ├── PortalApp.tsx                    # Client root: auth state, routing, theme
+│   │   └── components/MyPartnerShell.tsx    # Login form + Portal layout + featureRegistry
+│   ├── markdown/
+│   │   ├── MarkdownWorkspace.tsx
+│   │   ├── types.ts
+│   │   └── components/
+│   │       ├── Sidebar.tsx
+│   │       ├── Content.tsx
+│   │       ├── MarkdownEditor.tsx
+│   │       ├── MarkdownViewer.tsx
+│   │       └── WelcomeScreen.tsx
+│   ├── notes/
+│   │   └── components/NotesApp.tsx
+│   └── pwa/
+│       ├── hooks/useInstallPrompt.ts
+│       └── components/
+│           ├── OfflineBanner.tsx
+│           ├── UpdateAvailableToast.tsx
+│           └── InstallPrompt.tsx
+└── types/
+    └── file-system-access.d.ts
+
+backend/
+├── notes/
+│   ├── model.ts
+│   ├── collection-handlers.ts
+│   └── item-handlers.ts
+└── supabase/
+    └── server.ts
 ```
 
-New portal features go under `src/components/<feature>/`. Register them in `featureRegistry` in `MyPartnerShell.tsx` and add a route case in `App.tsx`.
+Path aliases: `@/*` → `src/*`, `@backend/*` → `backend/*`
+
+New portal features go under `src/features/<feature>/`. Register in `featureRegistry` in `MyPartnerShell.tsx`, add route case in `PortalApp.tsx`.
 
 ### Component Organization Rules
 
@@ -279,20 +297,24 @@ User clicks submit → button shows loading → success message → form resets 
 
 ### Project Stack (MyPartner Portal)
 
-This agent operates on a **browser-only Vite + React 19 SPA**. No backend, no SSR.
+This agent operates on a **Next.js App Router full-stack app** with a `backend/` directory and Supabase API. SSR-capable; deployed to Vercel.
 
 Installed and available:
-- React 19, TypeScript 5 (strict)
-- Tailwind CSS **v4** — `@theme` directive in `index.css`, **not** `tailwind.config.js`
-- `lucide-react` for icons (preferred); `react-icons` exists but avoid adding new imports
+- Next.js (App Router), React 19, TypeScript 5 (strict)
+- Tailwind CSS **v4** — `@theme` directive in `globals.css` (`src/app/globals.css`), **not** `tailwind.config.js`
+- `lucide-react` for icons — do not add `react-icons`
 - `react-hot-toast` for notifications
-- `marked` + `highlight.js` for markdown
+- `marked` + `highlight.js` for markdown rendering
+- `uuid` for ID generation
+- `@supabase/supabase-js` for Supabase client
 
-**Not installed — do not suggest or add:**
-- Framer Motion, React Hook Form, Zod
+**Do not suggest or add:**
+- Framer Motion (not installed)
 - TanStack Query, TanStack Table
-- Zustand, Redux, Context API (not needed)
-- Storybook, Playwright, Cypress, Jest (no test suite in this project)
+- Zustand, Redux, Context API (not needed — use local React state + localStorage)
+- `react-icons` (use `lucide-react` only)
+
+**Path aliases:** `@/*` → `src/*`, `@backend/*` → `backend/*`
 
 ### Project CSS Variable System
 
@@ -509,11 +531,12 @@ On mobile, prefer one of these:
 
 ## Storage & Async Operations
 
-This project has **no backend or HTTP API**. All data lives in browser storage.
+This project has a **Supabase backend** (via Next.js API routes) and browser-side storage.
 
 | Storage | Used for |
 |---|---|
-| `localStorage` | Auth session, theme, file list, notes |
+| Supabase (primary) | Notes CRUD — synced via `/api/notes` routes |
+| `localStorage` | Auth session, theme, markdown files, offline notes cache + mutation queue |
 | `IndexedDB` | FileSystemFileHandle persistence across reloads |
 | File System Access API | Reading/writing `.md` files from disk |
 
