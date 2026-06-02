@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { WifiOff } from '@markdown-viewer/common/dependencies'
+import { WifiOff } from '@mypartner/common/dependencies'
 
 export default function OfflineBanner() {
   const [isOffline, setIsOffline] = useState<boolean>(() => (

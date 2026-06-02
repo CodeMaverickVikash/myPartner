@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, X } from '@markdown-viewer/common/dependencies'
+import { Download, X } from '@mypartner/common/dependencies'
 import { useInstallPrompt } from '../hooks/useInstallPrompt'
 
 const DISMISS_KEY = 'mypartner-pwa-install-dismissed'

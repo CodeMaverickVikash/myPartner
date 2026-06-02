@@ -1,4 +1,4 @@
-import { Folder, PenLine, RefreshCw, BookOpen, FileText, Code } from '@markdown-viewer/common/dependencies'
+import { Folder, PenLine, RefreshCw, BookOpen, FileText, Code } from '@mypartner/common/dependencies'
 
 function WelcomeScreen() {
   return (

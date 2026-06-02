@@ -18,7 +18,7 @@ import {
   Trash2,
   Undo2,
   type LucideIcon
-} from '@markdown-viewer/common/dependencies'
+} from '@mypartner/common/dependencies'
 import { parseMarkdown } from '../lib/markdown'
 
 interface MarkdownViewerProps {

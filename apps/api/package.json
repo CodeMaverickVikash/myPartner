@@ -1,10 +1,11 @@
 {
-  "name": "@markdown-viewer/api",
+  "name": "@mypartner/api",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
     "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js"
   },
   "dependencies": {

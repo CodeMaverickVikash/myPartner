@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, FileText, X, FolderOpen, Folder, Link } from '@markdown-viewer/common/dependencies'
+import { ArrowLeft, BookOpen, FileText, X, FolderOpen, Folder, Link } from '@mypartner/common/dependencies'
 import { extractHeadings } from '../lib/markdown'
 import { isFileSystemAccessSupported } from '../lib/file-system'
 import type { MarkdownFile } from '../types'

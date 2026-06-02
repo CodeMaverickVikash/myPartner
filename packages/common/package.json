@@ -1,5 +1,5 @@
 {
-  "name": "@markdown-viewer/common",
+  "name": "@mypartner/common",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,6 +9,11 @@
     "./file-system-access": "./src/file-system-access.ts"
   },
   "types": "./src/index.ts",
+  "scripts": {
+    "dev": "tsc -p tsconfig.json --watch",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json"
+  },
   "dependencies": {
     "lucide-react": "^1.17.0",
     "react-hot-toast": "^2.6.0",

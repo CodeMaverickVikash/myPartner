@@ -11,9 +11,9 @@ import {
   Sun,
   Zap,
   type LucideIcon
-} from '@markdown-viewer/common/dependencies'
-import { getApiUrl } from '@markdown-viewer/common'
-import { toast } from '@markdown-viewer/common/dependencies'
+} from '@mypartner/common/dependencies'
+import { getApiUrl } from '@mypartner/common'
+import { toast } from '@mypartner/common/dependencies'
 import { useInstallPrompt } from '../../pwa/hooks/useInstallPrompt'
 
 export type ThemeMode = 'light' | 'dark'

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { toast } from '@markdown-viewer/common/dependencies'
+import { toast } from '@mypartner/common/dependencies'
 import Sidebar from './components/Sidebar'
 import Content from './components/Content'
 import { loadFromLocalStorage, saveToLocalStorage } from './lib/storage'

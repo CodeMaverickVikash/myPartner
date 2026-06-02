@@ -1,6 +1,6 @@
-# Markdown Viewer
+# myPartner
 
-An offline-first Next.js PWA for editing Markdown files and keeping local notes. It supports direct file-system access in Chromium browsers, live preview, local persistence, install prompts, a custom service worker, and a separate NestJS API backend.
+myPartner is an offline-first workspace portal built as a pnpm monorepo. The Markdown editor is one package inside the project, alongside Notes, shared browser utilities, the Next.js web app, and a separate NestJS API backend.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ Install dependencies:
 pnpm install
 ```
 
-Run the app locally:
+Run the myPartner web app locally:
 
 ```bash
 pnpm dev
@@ -42,16 +42,32 @@ Check lint before committing:
 pnpm lint
 ```
 
+Run individual packages independently:
+
+```bash
+pnpm --filter @mypartner/markdown-editor dev
+pnpm --filter @mypartner/note-taking dev
+pnpm --filter @mypartner/common build
+pnpm --filter @mypartner/api dev
+pnpm --filter @mypartner/web dev
+```
+
 ## Scripts
 
 ```bash
 pnpm dev
+pnpm dev:web
 pnpm dev:api
+pnpm dev:markdown
+pnpm dev:notes
 pnpm build
+pnpm build:all
 pnpm build:api
+pnpm build:packages
 pnpm start
 pnpm start:api
 pnpm lint
+pnpm typecheck
 ```
 
 Open `http://localhost:3000` during development.
@@ -77,7 +93,7 @@ packages/markdown-editor/         Markdown editor package consumed by the web ap
 packages/note-taking/             Note-taking package consumed by the web app
 ```
 
-The web app imports Markdown from `@markdown-viewer/markdown-editor` and Notes from `@markdown-viewer/note-taking`. Both feature packages depend on `@markdown-viewer/common` for shared utilities and browser typings. App-local imports use the `@/*` alias, backend imports use `@backend/*`, and files inside the same feature use local relative imports.
+The web app imports the Markdown editor package from `@mypartner/markdown-editor` and Notes from `@mypartner/note-taking`. Both feature packages depend on `@mypartner/common` for shared utilities and browser typings. App-local imports use the `@/*` alias, backend imports use `@backend/*`, and files inside the same feature use local relative imports.
 
 ## PWA
 

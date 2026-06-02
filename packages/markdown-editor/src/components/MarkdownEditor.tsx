@@ -16,7 +16,7 @@ import {
   ChevronDown,
   Strikethrough,
   type LucideIcon
-} from '@markdown-viewer/common/dependencies'
+} from '@mypartner/common/dependencies'
 
 interface MarkdownEditorProps {
   content: string

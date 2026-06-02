@@ -1,5 +1,5 @@
-import { uuidv4 } from '@markdown-viewer/common/dependencies'
-import { getApiUrl } from '@markdown-viewer/common'
+import { uuidv4 } from '@mypartner/common/dependencies'
+import { getApiUrl } from '@mypartner/common'
 import type { LocalNote, NoteColor } from '../types'
 import { deleteNote, getAllOwnerNotes, getNote, getPendingNotes, saveNote, saveNotes } from './idb'
 

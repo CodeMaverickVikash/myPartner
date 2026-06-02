@@ -1,17 +1,18 @@
 {
-  "name": "@markdown-viewer/web",
+  "name": "@mypartner/web",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@markdown-viewer/common": "workspace:*",
-    "@markdown-viewer/markdown-editor": "workspace:*",
-    "@markdown-viewer/note-taking": "workspace:*",
+    "@mypartner/common": "workspace:*",
+    "@mypartner/markdown-editor": "workspace:*",
+    "@mypartner/note-taking": "workspace:*",
     "@supabase/supabase-js": "^2.106.2",
     "next": "16.2.6",
     "react": "19.2.4",

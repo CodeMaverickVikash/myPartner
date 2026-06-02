@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, BookOpenText, NotebookTabs, type LucideIcon } from '@markdown-viewer/common/dependencies'
+import { ArrowRight, BookOpenText, NotebookTabs, type LucideIcon } from '@mypartner/common/dependencies'
 import { featureRegistry } from './MyPartnerShell'
 
 interface PortalHomeProps {

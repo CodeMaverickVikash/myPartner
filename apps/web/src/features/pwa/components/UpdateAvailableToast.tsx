@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { toast } from '@markdown-viewer/common/dependencies'
+import { toast } from '@mypartner/common/dependencies'
 
 export default function UpdateAvailableToast() {
   useEffect(() => {

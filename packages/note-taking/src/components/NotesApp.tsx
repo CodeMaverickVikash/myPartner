@@ -32,8 +32,8 @@ import {
   WifiOff,
   toast,
   uuidv4,
-} from '@markdown-viewer/common/dependencies'
-import { cx } from '@markdown-viewer/common'
+} from '@mypartner/common/dependencies'
+import { cx } from '@mypartner/common'
 import type { LocalNote, NoteColor, SyncStatus } from '../types'
 import { deleteNote as idbDelete, getVisibleNotes, saveNote } from '../lib/idb'
 import { pullServerNotes, syncPendingNotes } from '../lib/sync'

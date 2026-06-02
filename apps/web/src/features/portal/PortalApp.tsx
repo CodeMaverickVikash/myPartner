@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Toaster } from '@markdown-viewer/common/dependencies'
-import { MarkdownWorkspace } from '@markdown-viewer/markdown-editor'
-import { NotesApp } from '@markdown-viewer/note-taking'
+import { Toaster } from '@mypartner/common/dependencies'
+import { MarkdownWorkspace } from '@mypartner/markdown-editor'
+import { NotesApp } from '@mypartner/note-taking'
 import {
   MyPartnerLogin,
   MyPartnerPortal,

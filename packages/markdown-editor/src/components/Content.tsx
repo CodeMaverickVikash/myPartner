@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Menu, ChevronUp, FileText, Link, FolderOpen, Maximize2, Minimize2, Save, Copy, Check } from '@markdown-viewer/common/dependencies'
+import { Menu, ChevronUp, FileText, Link, FolderOpen, Maximize2, Minimize2, Save, Copy, Check } from '@mypartner/common/dependencies'
 import MarkdownViewer from './MarkdownViewer'
 import type { MarkdownFile } from '../types'
 
