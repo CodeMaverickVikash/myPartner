@@ -1,6 +1,6 @@
 # Markdown Viewer
 
-An offline-first Next.js PWA for editing Markdown files and keeping local notes. It supports direct file-system access in Chromium browsers, live preview, local persistence, install prompts, and a custom service worker.
+An offline-first Next.js PWA for editing Markdown files and keeping local notes. It supports direct file-system access in Chromium browsers, live preview, local persistence, install prompts, a custom service worker, and a separate NestJS API backend.
 
 ## Quick Start
 
@@ -18,6 +18,18 @@ pnpm dev
 
 Open `http://localhost:3000`.
 
+Run the NestJS API locally:
+
+```bash
+pnpm dev:api
+```
+
+By default the API listens on `http://localhost:3001/api`. To make the web app call it directly, set:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
 Create a production build:
 
 ```bash
@@ -34,8 +46,11 @@ pnpm lint
 
 ```bash
 pnpm dev
+pnpm dev:api
 pnpm build
+pnpm build:api
 pnpm start
+pnpm start:api
 pnpm lint
 ```
 
@@ -50,11 +65,12 @@ Open `http://localhost:3000` during development.
 ## Project Structure
 
 ```text
-apps/web/                         Next.js PWA wrapper, portal shell, route handlers, backend, assets
+apps/api/                         NestJS API backend for auth checks and notes sync
+apps/web/                         Next.js PWA wrapper, portal shell, compatibility API adapters, assets
 apps/web/src/app/                 App Router routes, layout, API adapters, metadata
 apps/web/src/features/portal/     Portal shell, login, session-level app composition
 apps/web/src/features/pwa/        PWA install prompt, offline banner, service-worker update UI
-apps/web/backend/                 Supabase client, DB migrations, server handlers
+apps/web/backend/                 Legacy Next API implementation and Supabase migrations
 apps/web/public/                  Static assets, icons, and service worker
 packages/common/                  Shared utilities and browser typings used by workspace packages
 packages/markdown-editor/         Markdown editor package consumed by the web app
@@ -84,7 +100,34 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 The service role key is used only by Next.js API routes. Do not expose it with a `NEXT_PUBLIC_` prefix.
 
-## Vercel Backend Deployment
+## NestJS Backend Deployment
+
+The extracted API lives in `apps/api` and exposes:
+
+- `POST /api/auth/check-email`
+- `GET /api/notes`
+- `POST /api/notes`
+- `PATCH /api/notes/:id`
+- `DELETE /api/notes/:id`
+- `POST /api/notes/sync`
+
+Configure these environment variables for the NestJS backend:
+
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
+ALLOWED_EMAILS=optional,comma,separated,emails
+CORS_ORIGIN=http://localhost:3000
+PORT=3001
+```
+
+Configure this environment variable for the Next.js frontend when it should call the NestJS backend:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://your-api-host
+```
+
+## Vercel Backend Compatibility
 
 The backend runs as Next.js Route Handlers on Vercel. The files under `apps/web/src/app/api` are thin adapters, and the implementation lives in `apps/web/backend/`.
 

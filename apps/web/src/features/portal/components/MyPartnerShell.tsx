@@ -12,6 +12,7 @@ import {
   Zap,
   type LucideIcon
 } from '@markdown-viewer/common/dependencies'
+import { getApiUrl } from '@markdown-viewer/common'
 import { toast } from '@markdown-viewer/common/dependencies'
 import { useInstallPrompt } from '../../pwa/hooks/useInstallPrompt'
 
@@ -105,7 +106,7 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
     setIsChecking(true)
     setEmailError('')
     try {
-      const res = await fetch('/api/auth/check-email', {
+      const res = await fetch(getApiUrl('/api/auth/check-email'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

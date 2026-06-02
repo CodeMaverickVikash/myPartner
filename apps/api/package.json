@@ -1,0 +1,21 @@
+{
+  "name": "@markdown-viewer/api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/platform-express": "^11.1.9",
+    "@supabase/supabase-js": "^2.106.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.14"
+  }
+}

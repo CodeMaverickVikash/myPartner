@@ -1,4 +1,5 @@
 import { uuidv4 } from '@markdown-viewer/common/dependencies'
+import { getApiUrl } from '@markdown-viewer/common'
 import type { LocalNote, NoteColor } from '../types'
 import { deleteNote, getAllOwnerNotes, getNote, getPendingNotes, saveNote, saveNotes } from './idb'
 
@@ -18,7 +19,7 @@ interface SyncResult {
 
 async function syncOne(note: LocalNote, ownerEmail: string): Promise<void> {
   try {
-    const res = await fetch('/api/notes/sync', {
+    const res = await fetch(getApiUrl('/api/notes/sync'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-user-email': ownerEmail },
       body: JSON.stringify({
@@ -126,7 +127,7 @@ export async function syncPendingNotes(ownerEmail: string): Promise<void> {
 export async function pullServerNotes(ownerEmail: string): Promise<void> {
   if (!navigator.onLine) return
 
-  const res = await fetch('/api/notes', { headers: { 'x-user-email': ownerEmail } })
+  const res = await fetch(getApiUrl('/api/notes'), { headers: { 'x-user-email': ownerEmail } })
   if (!res.ok) return
 
   const { notes: serverNotes } = await res.json() as {

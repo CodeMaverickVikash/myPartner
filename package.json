@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @markdown-viewer/web dev",
+    "dev:api": "pnpm --filter @markdown-viewer/api dev",
     "build": "pnpm --filter @markdown-viewer/web build",
+    "build:api": "pnpm --filter @markdown-viewer/api build",
     "start": "pnpm --filter @markdown-viewer/web start",
+    "start:api": "pnpm --filter @markdown-viewer/api start",
     "lint": "pnpm --filter @markdown-viewer/web lint"
   },
   "devDependencies": {
