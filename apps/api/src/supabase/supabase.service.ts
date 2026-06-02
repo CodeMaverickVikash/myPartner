@@ -22,7 +22,10 @@ export class SupabaseService {
         persistSession: false,
         autoRefreshToken: false,
       },
-      realtime: { transport: ws },
+      realtime: {
+        // @ts-expect-error: @types/ws Event.target is WebSocket; Supabase expects EventTarget | null — safe at runtime
+        transport: ws,
+      },
     })
 
     if (isStatelessApi()) return client
