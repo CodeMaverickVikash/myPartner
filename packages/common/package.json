@@ -1,0 +1,21 @@
+{
+  "name": "@markdown-viewer/common",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dependencies": "./src/dependencies.ts",
+    "./file-system-access": "./src/file-system-access.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "lucide-react": "^1.17.0",
+    "react-hot-toast": "^2.6.0",
+    "uuid": "^14.0.0"
+  },
+  "peerDependencies": {
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@markdown-viewer/note-taking",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@markdown-viewer/common": "workspace:*",
+    "dexie": "^4.4.3"
+  },
+  "peerDependencies": {
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  }
+}

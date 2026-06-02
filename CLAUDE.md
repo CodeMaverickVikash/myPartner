@@ -36,8 +36,15 @@ pnpm start     # Serve production build locally
 | Agent | File | Use when |
 |---|---|---|
 | `ux-ui-developer-agent` | `.claude/agents/ux-ui-developer-agent.md` | Any UI work — layout, components, accessibility, states, dark mode, responsive design |
+| `pwa-developer-agent` | `.claude/agents/pwa-developer-agent.md` | Service worker, manifest, offline UX, caching, install prompt, update flow |
+| `security-hardening-agent` | `.claude/agents/security-hardening-agent.md` | Auth (Supabase Auth/JWT), RLS, OWASP validation, secure headers, secret management |
+| `backend-api-agent` | `.claude/agents/backend-api-agent.md` | API routes, Zod validation, typed errors, auth middleware, Supabase server patterns |
+| `testing-agent` | `.claude/agents/testing-agent.md` | Vitest unit/component tests, Playwright E2E, coverage setup, CI test integration |
+| `observability-agent` | `.claude/agents/observability-agent.md` | Sentry error tracking, Web Vitals, error boundaries, structured API logging |
+| `devops-ci-agent` | `.claude/agents/devops-ci-agent.md` | GitHub Actions CI/CD, Vercel env management, branch protection, dependency updates |
+| `mobile-designer-agent` | `.claude/agents/mobile-designer-agent.md` | Mobile-first layouts, touch UX, safe areas, bottom nav/sheets, iOS/Android quirks, mobile design tokens |
 
-Invoke: `@ux-ui-developer-agent` or naturally — *"have the ux agent review the login form"*.
+Invoke by agent name: `@security-hardening-agent` or naturally — *"have the security agent review the auth flow"*.
 
 ---
 

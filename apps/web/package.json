@@ -1,0 +1,23 @@
+{
+  "name": "@markdown-viewer/web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@markdown-viewer/common": "workspace:*",
+    "@markdown-viewer/markdown-editor": "workspace:*",
+    "@markdown-viewer/note-taking": "workspace:*",
+    "@supabase/supabase-js": "^2.106.2",
+    "next": "16.2.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4"
+  }
+}

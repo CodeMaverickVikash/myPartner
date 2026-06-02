@@ -1,27 +1,14 @@
 {
-  "name": "markdown-viewer",
+  "name": "markdown-viewer-monorepo",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.106.2",
-    "dexie": "^4.4.3",
-    "highlight.js": "^11.11.1",
-    "lucide-react": "^1.17.0",
-    "marked": "^18.0.4",
-    "next": "16.2.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-hot-toast": "^2.6.0",
-    "uuid": "^14.0.0"
+    "dev": "pnpm --filter @markdown-viewer/web dev",
+    "build": "pnpm --filter @markdown-viewer/web build",
+    "start": "pnpm --filter @markdown-viewer/web start",
+    "lint": "pnpm --filter @markdown-viewer/web lint"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

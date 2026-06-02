@@ -7,41 +7,7 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@supabase/supabase-js':
-        specifier: ^2.106.2
-        version: 2.106.2
-      dexie:
-        specifier: ^4.4.3
-        version: 4.4.3
-      highlight.js:
-        specifier: ^11.11.1
-        version: 11.11.1
-      lucide-react:
-        specifier: ^1.17.0
-        version: 1.17.0(react@19.2.4)
-      marked:
-        specifier: ^18.0.4
-        version: 18.0.4
-      next:
-        specifier: 16.2.6
-        version: 16.2.6(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      react:
-        specifier: 19.2.4
-        version: 19.2.4
-      react-dom:
-        specifier: 19.2.4
-        version: 19.2.4(react@19.2.4)
-      react-hot-toast:
-        specifier: ^2.6.0
-        version: 2.6.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      uuid:
-        specifier: ^14.0.0
-        version: 14.0.0
     devDependencies:
-      '@tailwindcss/postcss':
-        specifier: ^4
-        version: 4.3.0
       '@types/node':
         specifier: ^20
         version: 20.19.41
@@ -69,6 +35,88 @@ importers:
       ws:
         specifier: ^8.21.0
         version: 8.21.0
+
+  apps/web:
+    dependencies:
+      '@markdown-viewer/common':
+        specifier: workspace:*
+        version: link:../../packages/common
+      '@markdown-viewer/markdown-editor':
+        specifier: workspace:*
+        version: link:../../packages/markdown-editor
+      '@markdown-viewer/note-taking':
+        specifier: workspace:*
+        version: link:../../packages/note-taking
+      '@supabase/supabase-js':
+        specifier: ^2.106.2
+        version: 2.106.2
+      next:
+        specifier: 16.2.6
+        version: 16.2.6(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@tailwindcss/postcss':
+        specifier: ^4
+        version: 4.3.0
+
+  packages/common:
+    dependencies:
+      lucide-react:
+        specifier: ^1.17.0
+        version: 1.17.0(react@19.2.4)
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+      react-hot-toast:
+        specifier: ^2.6.0
+        version: 2.6.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      uuid:
+        specifier: ^14.0.0
+        version: 14.0.0
+
+  packages/markdown-editor:
+    dependencies:
+      '@markdown-viewer/common':
+        specifier: workspace:*
+        version: link:../common
+      dexie:
+        specifier: ^4.4.3
+        version: 4.4.3
+      highlight.js:
+        specifier: ^11.11.1
+        version: 11.11.1
+      marked:
+        specifier: ^18.0.4
+        version: 18.0.4
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+
+  packages/note-taking:
+    dependencies:
+      '@markdown-viewer/common':
+        specifier: workspace:*
+        version: link:../common
+      dexie:
+        specifier: ^4.4.3
+        version: 4.4.3
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
 
 packages:
 
