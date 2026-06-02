@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import ws from 'ws'
 import { isStatelessApi } from '../env'
 
 @Injectable()
@@ -21,6 +22,7 @@ export class SupabaseService {
         persistSession: false,
         autoRefreshToken: false,
       },
+      realtime: { transport: ws },
     })
 
     if (isStatelessApi()) return client
