@@ -7,6 +7,8 @@ export function configureApiApp(app: INestApplication) {
   app.setGlobalPrefix('api')
   app.enableCors({
     origin: getCorsOrigins(),
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'x-user-email'],
     credentials: true,
   })
 }

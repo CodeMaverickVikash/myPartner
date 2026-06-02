@@ -6,5 +6,5 @@ export function isStatelessApi() {
 export function getCorsOrigins() {
   const raw = process.env.CORS_ORIGIN
   if (!raw?.trim()) return true
-  return raw.split(',').map(origin => origin.trim()).filter(Boolean)
+  return raw.split(',').map(origin => origin.trim().replace(/\/+$/, '')).filter(Boolean)
 }
