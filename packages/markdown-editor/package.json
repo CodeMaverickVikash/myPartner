@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
   },
@@ -14,7 +15,6 @@
   },
   "dependencies": {
     "@mypartner/common": "workspace:*",
-    "dexie": "^4.4.3",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.4"
   },
