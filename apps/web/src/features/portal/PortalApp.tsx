@@ -155,12 +155,9 @@ function PortalApp() {
         />
       ) : (
         <MyPartnerPortal
-          activeFeatureId={activeFeatureId}
-          isHome={isHome}
           session={session}
           theme={theme}
           onLogout={handleLogout}
-          onNavigate={navigateTo}
           onToggleTheme={toggleTheme}
         >
           {isHome && <PortalHome onNavigate={navigateTo} />}

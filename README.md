@@ -2,6 +2,34 @@
 
 An offline-first Next.js PWA for editing Markdown files and keeping local notes. It supports direct file-system access in Chromium browsers, live preview, local persistence, install prompts, and a custom service worker.
 
+## Quick Start
+
+Install dependencies:
+
+```bash
+pnpm install
+```
+
+Run the app locally:
+
+```bash
+pnpm dev
+```
+
+Open `http://localhost:3000`.
+
+Create a production build:
+
+```bash
+pnpm build
+```
+
+Check lint before committing:
+
+```bash
+pnpm lint
+```
+
 ## Scripts
 
 ```bash

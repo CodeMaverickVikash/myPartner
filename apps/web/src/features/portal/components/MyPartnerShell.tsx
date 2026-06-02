@@ -1,6 +1,5 @@
 import { useState, type ReactNode, type SyntheticEvent } from 'react'
 import {
-  ArrowLeft,
   ArrowRight,
   BookOpenText,
   CheckCircle2,
@@ -36,12 +35,9 @@ interface LoginProps extends ShellProps {
 }
 
 interface PortalProps extends ShellProps {
-  activeFeatureId: FeatureId
-  isHome?: boolean
   session: AuthSession
   children?: ReactNode
   onLogout: () => void
-  onNavigate: (path: string) => void
 }
 
 interface FeatureRegistryItem {
@@ -236,13 +232,10 @@ export function MyPartnerLogin({ theme, onLogin, onToggleTheme }: LoginProps) {
 }
 
 export function MyPartnerPortal({
-  activeFeatureId,
-  isHome,
   session,
   children,
   theme,
   onLogout,
-  onNavigate,
   onToggleTheme,
 }: PortalProps) {
   return (
