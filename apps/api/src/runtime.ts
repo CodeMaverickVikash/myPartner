@@ -9,7 +9,6 @@ export function configureApiApp(app: INestApplication) {
     origin: getCorsOrigins(),
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'x-user-email'],
-    credentials: true,
   })
 }
 
