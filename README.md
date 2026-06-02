@@ -135,7 +135,10 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 ALLOWED_EMAILS=optional,comma,separated,emails
 CORS_ORIGIN=http://localhost:3000
 PORT=3001
+API_STATELESS=false
 ```
+
+Set `API_STATELESS=true` for stateless/serverless API deployments such as Vercel.
 
 Configure this environment variable for the Next.js frontend when it should call the NestJS backend:
 

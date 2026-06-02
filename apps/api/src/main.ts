@@ -1,21 +1,11 @@
 import 'reflect-metadata'
-import { NestFactory } from '@nestjs/core'
-import { AppModule } from './app.module'
-
-function getCorsOrigins() {
-  const raw = process.env.CORS_ORIGIN
-  if (!raw?.trim()) return true
-  return raw.split(',').map(origin => origin.trim()).filter(Boolean)
-}
+import { isStatelessApi } from './env'
+import { createApiApp } from './runtime'
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule)
-  app.setGlobalPrefix('api')
-  app.enableCors({
-    origin: getCorsOrigins(),
-    credentials: true,
-  })
+  if (isStatelessApi()) return
 
+  const app = await createApiApp()
   const port = Number(process.env.PORT ?? 3001)
   await app.listen(port)
 }
