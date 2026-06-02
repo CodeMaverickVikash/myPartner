@@ -4,7 +4,6 @@
   "buildCommand": "cd ../.. && pnpm --filter @mypartner/api build",
   "functions": {
     "api/[...path].ts": {
-      "runtime": "nodejs20.x",
       "includeFiles": "dist/**",
       "maxDuration": 30
     }
