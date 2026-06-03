@@ -23,7 +23,7 @@ export function errorResponse(error: unknown, fallback = 'Request failed') {
   }
 
   const message = error instanceof Error ? error.message : fallback
-  return json({ error: message }, { status: 503 })
+  return json({ error: message }, { status: 500 })
 }
 
 export async function readJsonBody(request: Request) {

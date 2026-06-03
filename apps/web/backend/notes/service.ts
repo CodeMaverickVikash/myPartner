@@ -170,10 +170,10 @@ export async function syncNote(ownerEmailHeader: string | undefined, payload: Sy
     const { data, error } = await supabase
       .from('notes')
       .update({
-        title: typeof payload.title === 'string' ? payload.title : '',
-        body: typeof payload.body === 'string' ? payload.body : '',
+        title: typeof payload.title === 'string' ? payload.title : existingRow.title,
+        body: typeof payload.body === 'string' ? payload.body : existingRow.body,
         color: normalizeNoteColor(payload.color),
-        pinned: typeof payload.pinned === 'boolean' ? payload.pinned : false,
+        pinned: typeof payload.pinned === 'boolean' ? payload.pinned : existingRow.pinned,
         updated_at: normalizeIsoDate(payload.updatedAt, now),
       })
       .eq('id', serverId as string)

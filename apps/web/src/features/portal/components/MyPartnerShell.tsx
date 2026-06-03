@@ -44,13 +44,14 @@ interface PortalProps extends ShellProps {
 interface FeatureRegistryItem {
   id: FeatureId
   label: string
+  tagline: string
   route: string
   icon: LucideIcon
 }
 
 export const featureRegistry: FeatureRegistryItem[] = [
-  { id: 'markdown', label: 'Markdown', route: '/portal/markdown', icon: BookOpenText },
-  { id: 'notes',    label: 'Notes',    route: '/portal/notes',    icon: NotebookTabs },
+  { id: 'markdown', label: 'Markdown', tagline: 'Live editor with file sync',  route: '/portal/markdown', icon: BookOpenText },
+  { id: 'notes',    label: 'Notes',    tagline: 'Pinnable notes, offline-first', route: '/portal/notes',    icon: NotebookTabs },
 ]
 
 function BrandMark() {

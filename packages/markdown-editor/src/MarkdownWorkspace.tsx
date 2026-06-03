@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { toast } from '@mypartner/common/dependencies'
+import { toast, uuidv4 } from '@mypartner/common/dependencies'
 import Sidebar from './components/Sidebar'
 import Content from './components/Content'
 import { loadFromLocalStorage, saveToLocalStorage } from './lib/storage'
@@ -12,6 +12,13 @@ type FileMap = Map<string, MarkdownFile>
 type FileHandleMap = Map<string, FileSystemFileHandle>
 type WatcherMap = Map<string, () => void>
 
+// Stable refs for values that watchers/callbacks need without triggering restarts
+function useLatestRef<T>(value: T) {
+  const ref = useRef(value)
+  ref.current = value
+  return ref
+}
+
 function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void }) {
   const [files, setFiles] = useState<FileMap>(new Map())
   const [currentFileId, setCurrentFileId] = useState<string | null>(null)
@@ -22,6 +29,8 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
   const [fileModifiedTimes, setFileModifiedTimes] = useState<Map<string, number>>(new Map())
   const watchersRef = useRef<WatcherMap>(new Map())
   const isDirtyRef = useRef(false)
+  const filesRef = useLatestRef(files)
+  const fileModifiedTimesRef = useLatestRef(fileModifiedTimes)
 
   const handleFileSelect = (newFileId: string) => {
     if (isDirtyRef.current && newFileId !== currentFileId) {
@@ -59,8 +68,8 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
           try {
             const file = await handle.getFile()
             modifiedTimes.set(fileId, file.lastModified)
-          } catch (error) {
-            console.error(`Error accessing file handle for ${fileId}:`, error)
+          } catch {
+            // Handle revoked — watcher will skip this file
           }
         }
         setFileModifiedTimes(modifiedTimes)
@@ -129,55 +138,51 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
   }
 
   const handleExternalFileChange = useCallback((fileId: string, newContent: string, newLastModified: number) => {
-    const file = files.get(fileId)
-
+    setFiles(prev => {
+      const file = prev.get(fileId)
+      if (!file) return prev
+      return new Map(prev).set(fileId, { ...file, content: newContent, updatedAt: new Date().toISOString() })
+    })
+    setFileModifiedTimes(prev => new Map(prev).set(fileId, newLastModified))
+    const file = filesRef.current.get(fileId)
     if (file) {
-      setFiles(new Map(files).set(fileId, {
-        ...file,
-        content: newContent,
-        updatedAt: new Date().toISOString()
-      }))
+      toast.success(`File "${file.name}" was updated externally and has been reloaded.`, { duration: 4000, icon: 'Reloaded' })
     }
-
-    setFileModifiedTimes(new Map(fileModifiedTimes).set(fileId, newLastModified))
-
-    if (file) {
-      toast.success(`File "${file.name}" was updated externally and has been reloaded.`, {
-        duration: 4000,
-        icon: 'Reloaded'
-      })
-    }
-  }, [files, fileModifiedTimes])
+  // filesRef is a stable ref — no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const watchers = watchersRef.current
 
+    // Start watchers for newly added handles
     fileHandles.forEach((fileHandle, fileId) => {
-      const file = files.get(fileId)
-      if (file && file.isSystemFile) {
-        const lastModified = fileModifiedTimes.get(fileId) ?? Date.now()
+      if (watchers.has(fileId)) return
+      const file = filesRef.current.get(fileId)
+      if (!file?.isSystemFile) return
 
-        const existingWatcher = watchers.get(fileId)
-        if (existingWatcher) existingWatcher()
-
-        const stopWatcher = watchFile(
-          fileHandle,
-          lastModified,
-          (newContent, newLastModified) => {
-            handleExternalFileChange(fileId, newContent, newLastModified)
-          },
-          2000
-        )
-
-        watchers.set(fileId, stopWatcher)
-      }
+      const lastModified = fileModifiedTimesRef.current.get(fileId) ?? 0
+      watchers.set(fileId, watchFile(
+        fileHandle,
+        lastModified,
+        (newContent, newLastModified) => handleExternalFileChange(fileId, newContent, newLastModified),
+        2000,
+      ))
     })
 
+    // Stop watchers for removed handles
+    for (const [fileId, stop] of watchers.entries()) {
+      if (!fileHandles.has(fileId)) {
+        stop()
+        watchers.delete(fileId)
+      }
+    }
+
     return () => {
-      watchers.forEach(stopWatcher => stopWatcher())
+      watchers.forEach(stop => stop())
       watchers.clear()
     }
-  }, [fileHandles, files, fileModifiedTimes, handleExternalFileChange])
+  }, [fileHandles, handleExternalFileChange])
 
   const handleOpenFromSystem = async () => {
     if (!isFileSystemAccessSupported()) {
@@ -194,7 +199,7 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
       const { fileHandle, file, content, name, path } = result
 
       const fileData: MarkdownFile = {
-        id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: uuidv4(),
         name: name.replace('.md', '').replace('.markdown', ''),
         content,
         uploadedAt: new Date().toISOString(),
@@ -213,7 +218,6 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
         icon: 'Opened'
       })
     } catch (err) {
-      console.error('Error opening file:', err)
       toast.error(`Failed to open file: ${err instanceof Error ? err.message : 'Unknown error'}`, {
         duration: 4000
       })
@@ -248,7 +252,6 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
         icon: 'Saved'
       })
     } catch (err) {
-      console.error('Error saving file:', err)
       toast.error(`Failed to save file: ${err instanceof Error ? err.message : 'Unknown error'}`, {
         duration: 4000
       })
