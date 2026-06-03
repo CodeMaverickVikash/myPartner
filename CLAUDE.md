@@ -1,4 +1,4 @@
-# CLAUDE.md — MyPartner Portal (markdown-viewer)
+# CLAUDE.md — MyPartner Portal
 
 > This file is the single source of project memory. Keep it accurate. Update it when architecture, keys, or conventions change.
 
@@ -13,21 +13,25 @@
 
 ## What This Project Is
 
-A **Next.js full-stack app** deployed on Vercel. Dual-feature productivity portal ("MyPartner Portal"):
+A **pnpm monorepo** deployed on Vercel. Dual-feature productivity portal ("MyPartner Portal"):
 1. **Markdown Editor** — upload, edit, preview, and export `.md` files with live file watching (browser File System Access API)
 2. **Notes App** — color-coded, pinnable, searchable notes synced to Supabase with offline-first queue
 
-Authentication is client-side only (localStorage, no password). Notes are stored in Supabase; markdown files are local-only (localStorage + IndexedDB).
+Authentication is client-side only (localStorage, no password). Login validates email against `ALLOWED_EMAILS` env var via API. Notes are stored in Supabase; markdown files are local-only (localStorage + IndexedDB).
 
 ---
 
 ## Commands
 
 ```powershell
-pnpm dev       # Next.js dev server → http://localhost:3000
-pnpm build     # TypeScript check + production build
-pnpm start     # Serve production build locally
+pnpm dev              # Next.js dev server → http://localhost:3000
+pnpm build            # Production build (apps/web only)
+pnpm build:packages   # Build all packages (typecheck)
+pnpm start            # Serve production build locally
+pnpm typecheck        # Typecheck all packages + app
 ```
+
+All commands run from monorepo root. `pnpm dev` filters to `@mypartner/web`.
 
 ---
 
@@ -48,74 +52,113 @@ Invoke by agent name: `@security-hardening-agent` or naturally — *"have the se
 
 ---
 
-## Architecture
+## Monorepo Structure
 
 ```
-src/
-├── app/                                     # Next.js App Router
-│   ├── layout.tsx                           # Root layout: metadata, viewport, PWA tags
-│   ├── globals.css                          # Global CSS: @theme tokens, dark mode, markdown styles
-│   ├── manifest.ts                          # PWA manifest (webmanifest)
-│   ├── [[...path]]/page.tsx                 # Catch-all route → PortalApp (client component)
-│   └── api/notes/
-│       ├── route.ts                         # GET /api/notes, POST /api/notes
-│       └── [id]/route.ts                    # PATCH /api/notes/[id], DELETE /api/notes/[id]
-├── features/
-│   ├── portal/
-│   │   ├── PortalApp.tsx                    # Client root: auth state, routing, theme
-│   │   └── components/MyPartnerShell.tsx    # Login form + Portal layout + featureRegistry
-│   ├── markdown/
-│   │   ├── MarkdownWorkspace.tsx            # Markdown editor orchestrator
-│   │   ├── types.ts                         # MarkdownFile type
-│   │   ├── components/
-│   │   │   ├── Sidebar.tsx                  # File list + heading navigation
-│   │   │   ├── Content.tsx                  # Split-view area
-│   │   │   ├── MarkdownEditor.tsx           # Raw editor pane (contenteditable)
-│   │   │   ├── MarkdownViewer.tsx           # Rendered HTML preview pane
-│   │   │   └── WelcomeScreen.tsx            # Empty state / drag-drop upload
-│   │   └── lib/
-│   │       ├── storage.ts                   # localStorage JSON helpers
-│   │       ├── markdown.ts                  # marked.parse() + highlight.js + heading extraction
-│   │       ├── indexed-db.ts                # Persist FileSystemFileHandle across reloads
-│   │       └── file-system.ts               # File System Access API wrapper
-│   ├── notes/
-│   │   └── components/NotesApp.tsx          # Notes feature (offline-first, syncs to Supabase)
-│   └── pwa/
-│       ├── hooks/useInstallPrompt.ts
-│       └── components/
-│           ├── OfflineBanner.tsx
-│           ├── UpdateAvailableToast.tsx
-│           └── InstallPrompt.tsx
-└── types/
-    └── file-system-access.d.ts              # File System Access API ambient types
+apps/
+└── web/                        # @mypartner/web — Next.js app (Vercel deploy target)
+    ├── next.config.ts           # transpilePackages for all @mypartner/* packages
+    ├── vercel.json              # Vercel config (if root dir = apps/web)
+    ├── src/
+    │   ├── app/                 # Next.js App Router
+    │   │   ├── layout.tsx       # Root layout: metadata, viewport, PWA tags
+    │   │   ├── globals.css      # Global CSS: @theme tokens, dark mode, markdown styles
+    │   │   ├── manifest.ts      # PWA manifest (webmanifest)
+    │   │   ├── [[...path]]/
+    │   │   │   ├── page.tsx     # Thin server component — renders <ClientRoot />
+    │   │   │   └── client.tsx   # dynamic(PortalApp, { ssr: false }) wrapper
+    │   │   └── api/
+    │   │       ├── auth/check-email/route.ts   # POST /api/auth/check-email
+    │   │       └── notes/
+    │   │           ├── route.ts                # GET + POST /api/notes
+    │   │           ├── [id]/route.ts           # PATCH + DELETE /api/notes/[id]
+    │   │           └── sync/route.ts           # POST /api/notes/sync (batch sync)
+    │   └── features/
+    │       ├── portal/
+    │       │   ├── PortalApp.tsx               # Client root: auth state, routing, theme
+    │       │   └── components/
+    │       │       ├── MyPartnerShell.tsx       # Login form + Portal layout + featureRegistry
+    │       │       └── PortalHome.tsx           # Home dashboard (route: /portal/home)
+    │       └── pwa/
+    │           ├── hooks/useInstallPrompt.ts
+    │           └── components/
+    │               ├── OfflineBanner.tsx
+    │               ├── UpdateAvailableToast.tsx
+    │               └── InstallPrompt.tsx
+    └── backend/                  # Server-only handlers (imported by API routes via @backend/*)
+        ├── http.ts               # json() + readJsonBody() helpers
+        ├── env.ts                # getAllowedEmails() from ALLOWED_EMAILS env var
+        ├── auth/
+        │   └── check-email.ts   # Email allowlist check logic
+        ├── notes/
+        │   ├── model.ts          # Note, NoteRow, NoteColor types + mapNoteRow
+        │   ├── service.ts        # Supabase CRUD operations
+        │   ├── collection-handlers.ts  # GET + POST /api/notes handlers
+        │   ├── item-handlers.ts        # PATCH + DELETE /api/notes/[id] handlers
+        │   └── sync-handler.ts         # POST /api/notes/sync handler
+        └── supabase/
+            └── server.ts         # Supabase server client (nodejs runtime)
 
-backend/
-├── notes/
-│   ├── model.ts                             # Note, NoteRow, NoteColor types + mapNoteRow helpers
-│   ├── collection-handlers.ts               # Handlers for GET + POST /api/notes
-│   └── item-handlers.ts                     # Handlers for PATCH + DELETE /api/notes/[id]
-└── supabase/
-    └── server.ts                            # Supabase server client (nodejs runtime)
+packages/
+├── common/                       # @mypartner/common — shared utilities
+│   └── src/
+│       ├── index.ts              # exports: cx(), getApiUrl()
+│       ├── api.ts                # getApiUrl() — resolves NEXT_PUBLIC_API_BASE_URL
+│       ├── cx.ts                 # className helper
+│       ├── dependencies.ts       # re-exports: lucide-react icons, toast
+│       └── file-system-access.ts # File System Access API polyfill/types
+├── markdown-editor/              # @mypartner/markdown-editor
+│   └── src/
+│       ├── index.ts              # exports: MarkdownWorkspace, MarkdownFile
+│       ├── MarkdownWorkspace.tsx # Editor orchestrator
+│       ├── types.ts              # MarkdownFile type
+│       ├── components/
+│       │   ├── Sidebar.tsx       # File list + heading navigation
+│       │   ├── Content.tsx       # Split-view area
+│       │   ├── MarkdownEditor.tsx
+│       │   ├── MarkdownViewer.tsx
+│       │   └── WelcomeScreen.tsx
+│       └── lib/
+│           ├── storage.ts        # localStorage JSON helpers
+│           ├── markdown.ts       # marked.parse() + highlight.js + heading extraction
+│           ├── indexed-db.ts     # Persist FileSystemFileHandle across reloads
+│           ├── file-system.ts    # File System Access API wrapper
+│           └── demo.ts           # Demo file content
+└── note-taking/                  # @mypartner/note-taking
+    └── src/
+        ├── index.ts              # exports: NotesApp, LocalNote, NoteColor, SyncStatus
+        ├── types.ts              # LocalNote, NoteColor, SyncStatus
+        └── components/
+            └── NotesApp.tsx      # Notes feature component
+        └── lib/
+            ├── idb.ts            # IndexedDB helpers
+            └── sync.ts           # Supabase sync logic
+
+vercel.json                       # Root Vercel config (if root dir = repo root)
+pnpm-workspace.yaml               # Declares apps/* + packages/*
 ```
 
-**Path aliases** (tsconfig.json):
-- `@/*` → `src/*`
-- `@backend/*` → `backend/*`
+**Path aliases** (`apps/web/tsconfig.json`):
+- `@/*` → `apps/web/src/*`
+- `@backend/*` → `apps/web/backend/*`
+
+**Package consumption:** All `@mypartner/*` packages export `.ts` source files directly. Next.js compiles them via `transpilePackages` — no separate build step needed. Turbopack dev uses `turbopack.root` set to the monorepo root.
 
 ---
 
 ## Routing
 
-Next.js catch-all `src/app/[[...path]]/page.tsx` renders `<PortalApp />` for every path. Routing inside the app is client-side History API (no Next.js `<Link>` or `useRouter`).
+Next.js catch-all `[[...path]]/page.tsx` → `client.tsx` (SSR disabled via `next/dynamic`) → `PortalApp`. All routing is client-side History API (no Next.js `<Link>` or `useRouter`).
 
 | Path | Renders | Condition |
 |---|---|---|
 | `/login` | `MyPartnerLogin` | Unauthenticated |
-| `/portal/markdown` | `MyPartnerPortal` → `MarkdownWorkspace` | Default after login |
+| `/portal/home` | `MyPartnerPortal` → `PortalHome` | Default after login |
+| `/portal/markdown` | `MyPartnerPortal` → `MarkdownWorkspace` | Markdown feature |
 | `/portal/notes` | `MyPartnerPortal` → `NotesApp` | Notes feature |
 
 **`PortalApp.tsx` key functions:**
-- `getRedirectPath(path, hasSession)` — enforces auth guard; returns redirect target or `null`
+- `getRedirectPath(path, hasSession)` — auth guard; redirects `/` `/login` `/app` `/portal` → `/portal/home`
 - `getActiveFeatureId(path): FeatureId` — maps path to `'markdown' | 'notes'`
 - `navigateTo(path, replace?)` — pushes/replaces history and fires `popstate`
 
@@ -124,9 +167,11 @@ Next.js catch-all `src/app/[[...path]]/page.tsx` renders `<PortalApp />` for eve
 ## Auth Flow
 
 1. No session → `getRedirectPath` returns `/login` → `MyPartnerLogin` renders
-2. Submit form → `handleLogin(session)` → stores `AuthSession` in localStorage under `mypartner-auth-session` → navigates to `/portal/markdown`
-3. Logout → clears `mypartner-auth-session` → navigates to `/login`
-4. Session survives page reload (read from localStorage on mount)
+2. Submit email → `POST /api/auth/check-email` → validates against `ALLOWED_EMAILS` env var
+3. If allowed → `handleLogin(session)` → stores `AuthSession` in localStorage → navigates to `/portal/home`
+4. Logout → clears `mypartner-auth-session` → navigates to `/login`
+5. Session survives page reload (read from localStorage on mount)
+6. Broken API fails open (network errors do not block login)
 
 `AuthSession` shape (`MyPartnerShell.tsx`):
 ```ts
@@ -138,17 +183,19 @@ interface AuthSession {
 }
 ```
 
+**Env vars:**
+- `ALLOWED_EMAILS` — comma-separated list of authorized emails (server-only)
+- `NEXT_PUBLIC_API_BASE_URL` — optional base URL override for API calls (e.g. for cross-origin deploys)
+
 ---
 
 ## Notes: Offline-First Architecture
 
-Notes use a **write-through cache + mutation queue** pattern:
+Notes use a **write-through cache + mutation queue** pattern implemented in `@mypartner/note-taking`:
 
-- **localStorage cache** (`mypartner-notes:<email>:cache`) — loaded immediately on mount; no flash
-- **mutation queue** (`mypartner-notes:<email>:queue`) — queued ops when offline: `{ type: 'upsert', note }` or `{ type: 'delete' }`
-- On mount: if online, flush queue then fetch remote; if offline, serve cache
-- On reconnect (`online` event): flush queue, re-fetch remote
-- API routes (`/api/notes`, `/api/notes/[id]`) hit Supabase; require `x-user-email` header for row-level isolation
+- **IndexedDB cache** (`idb.ts`) — loaded immediately on mount; no flash
+- **sync.ts** — handles flush queue → fetch remote flow; called on mount (if online) and on `online` event
+- API routes (`/api/notes`, `/api/notes/[id]`, `/api/notes/sync`) hit Supabase; require `x-user-email` header for row-level isolation
 
 ---
 
@@ -187,8 +234,6 @@ Notes use a **write-through cache + mutation queue** pattern:
 | `mypartner-auth-session` | `AuthSession` | Login session |
 | `mypartner-theme` | `'light' \| 'dark'` | Theme preference |
 | `uploadedFiles` | `MarkdownFile[]` | Markdown editor files |
-| `mypartner-notes:<email>:cache` | `Note[]` | Notes offline cache (per user) |
-| `mypartner-notes:<email>:queue` | `QueuedNoteMutation[]` | Pending offline mutations (per user) |
 
 ---
 
@@ -202,58 +247,59 @@ Notes use a **write-through cache + mutation queue** pattern:
 | Styling | Tailwind CSS v4 (`@theme` in globals.css) | 4 |
 | Database | Supabase (postgres) | `@supabase/supabase-js ^2` |
 | Markdown | marked | 18 |
-| Syntax highlight | highlight.js (github-dark theme) | 11 |
+| Syntax highlight | highlight.js | 11 |
 | Icons | lucide-react | 1.17+ |
 | Notifications | react-hot-toast | 2 |
 | IDs | uuid | 14 |
+| IndexedDB | dexie | 4 |
+| Package manager | pnpm | 10 (workspaces) |
 | Deploy | Vercel | — |
 
 ---
 
 ## Key Conventions
 
-- **Strict TypeScript** — no `any`, no unused vars/params (`tsconfig.json: strict: true`)
+- **Strict TypeScript** — no `any`, no unused vars/params
 - **Tailwind v4** — uses `@theme` directive in `globals.css`; no `tailwind.config.js`
-- **Icons** — use `lucide-react` only; do not add `react-icons` imports
-- **State** — local React state + localStorage; no Redux, Zustand, or Context
-- **Comments** — only when the WHY is non-obvious; never describe what the code does
-- **No `any`** — define types in `model.ts` or feature `types.ts`
-- **API runtime** — Next.js API routes use `export const runtime = 'nodejs'` and `export const dynamic = 'force-dynamic'`
-
----
-
-## Feature: File System Access API
-
-`src/features/markdown/lib/file-system.ts`:
-- `openFileFromSystem()` — file picker → returns `{ fileHandle, file, content, name, path }`
-- `saveToFileHandle(handle, content)` — write to existing handle
-- `watchFile(handle, lastModified, cb, intervalMs)` — polls every N ms; returns cleanup fn
-- `isFileSystemAccessSupported()` — feature detection guard
-
-File handles survive page reload via IndexedDB (`lib/indexed-db.ts`).
+- **Icons** — import from `@mypartner/common/dependencies` (re-exports lucide-react); never import lucide-react directly in packages or app code
+- **Toast** — import `toast` from `@mypartner/common/dependencies`
+- **API URL** — use `getApiUrl(path)` from `@mypartner/common` for all `fetch()` calls; never hardcode `/api/...` paths
+- **State** — local React state + localStorage/IndexedDB; no Redux, Zustand, or Context
+- **No `any`** — define types in `types.ts` or `model.ts` of the relevant package
+- **API routes** — thin re-export files only: `export { GET, POST } from '@backend/...'`; all logic lives in `apps/web/backend/`
+- **API runtime** — backend handlers assume nodejs runtime; route files do NOT need `export const runtime` (Next.js default is nodejs for route handlers)
 
 ---
 
 ## Adding a New Portal Feature
 
-1. Create `src/features/<feature>/FeatureApp.tsx`
-2. Add entry to `featureRegistry` in `src/features/portal/components/MyPartnerShell.tsx`
-3. Add route case in `PortalApp.tsx → getActiveFeatureId()`
-4. Allow the path in `PortalApp.tsx → getRedirectPath()`
-5. Render the component in `PortalApp.tsx` JSX (`activeFeatureId === '<feature>' && <FeatureApp />`)
+**Option A — simple (logic fits in `apps/web/src/features/`):**
+1. Create `apps/web/src/features/<feature>/FeatureApp.tsx`
+2. Import and render it in `PortalApp.tsx`
+
+**Option B — package (shared or complex feature):**
+1. Create `packages/<feature>/` with `package.json` (`name: @mypartner/<feature>`) and `src/index.ts`
+2. Add to `transpilePackages` in `apps/web/next.config.ts`
+3. Add workspace dependency in `apps/web/package.json`
+
+**Both options — register the route:**
+1. Add entry to `featureRegistry` in `MyPartnerShell.tsx`
+2. Add route case in `PortalApp.tsx → getActiveFeatureId()`
+3. Allow the path in `PortalApp.tsx → getRedirectPath()`
+4. Render in `PortalApp.tsx` JSX
 
 ---
 
-## Notes App (`NotesApp.tsx`)
+## Notes App
 
-- Colors: mint, sky, coral, gold (defined in `backend/notes/model.ts`)
+- Colors: defined in `packages/note-taking/src/types.ts` as `NoteColor`
 - Features: pin, search (full-text), word count, createdAt/updatedAt timestamps, offline sync
-- Storage: Supabase (primary) + localStorage cache + offline mutation queue
+- Storage: Supabase (primary) + IndexedDB cache + offline mutation queue
 - Layout: sidebar + main editor, 1-col mobile / 2-col desktop
 
 ---
 
-## Markdown Editor (`MarkdownWorkspace.tsx`)
+## Markdown Editor
 
 - File picker or drag-drop upload of `.md` files
 - localStorage persistence of file content (`uploadedFiles`)
@@ -261,6 +307,7 @@ File handles survive page reload via IndexedDB (`lib/indexed-db.ts`).
 - Split-view: editor (contenteditable) + rendered preview
 - 2-second poll detects external file changes
 - Save back to original file via File System Access API
+- File System Access API ambient types: `packages/common/src/file-system-access.ts` (imported by `@mypartner/markdown-editor` index)
 
 ---
 
@@ -270,5 +317,8 @@ File handles survive page reload via IndexedDB (`lib/indexed-db.ts`).
 - Do not hardcode colors — use `var(--color-*)` tokens
 - Do not break the `[data-theme="dark"]` CSS selector system in `globals.css`
 - Do not use Tailwind `bg-white` or similar — they override the theme system
-- Do not add `react-icons` imports — use `lucide-react`
+- Do not import `lucide-react` directly — use `@mypartner/common/dependencies`
+- Do not add `react-icons` imports
+- Do not import `react-hot-toast` directly — use `toast` from `@mypartner/common/dependencies`
+- Do not hardcode API paths — use `getApiUrl()` from `@mypartner/common`
 - Don't ask to start the dev server
