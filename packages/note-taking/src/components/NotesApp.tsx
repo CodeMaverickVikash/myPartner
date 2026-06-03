@@ -813,13 +813,28 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
         </div>
       </aside>
 
-      {/* Resize handle — desktop only */}
+      {/* Resize handle — desktop only, sits over the sidebar border with zero layout width */}
       {!hideEditor && (
-        <div
-          className="hidden md:flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-line hover:bg-forest/40 transition-colors group"
-          onMouseDown={startResize}
-        >
-          <div className="h-8 w-0.5 rounded-full bg-ink-3/40 group-hover:bg-forest/70 transition-colors" />
+        <div className="hidden md:block relative w-0 shrink-0 z-10">
+          <div
+            className="group absolute inset-y-0 -left-3 w-6 cursor-col-resize flex items-center justify-center"
+            onMouseDown={startResize}
+          >
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col gap-0.75 bg-surface-1 rounded-full border border-forest/30 shadow-sm py-2 px-0.75">
+              <div className="flex gap-0.75">
+                <div className="h-0.75 w-0.75 rounded-full bg-forest/70" />
+                <div className="h-0.75 w-0.75 rounded-full bg-forest/70" />
+              </div>
+              <div className="flex gap-0.75">
+                <div className="h-0.75 w-0.75 rounded-full bg-forest/70" />
+                <div className="h-0.75 w-0.75 rounded-full bg-forest/70" />
+              </div>
+              <div className="flex gap-0.75">
+                <div className="h-0.75 w-0.75 rounded-full bg-forest/70" />
+                <div className="h-0.75 w-0.75 rounded-full bg-forest/70" />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
