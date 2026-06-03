@@ -161,7 +161,7 @@ function PortalApp() {
           onToggleTheme={toggleTheme}
         >
           {isHome && <PortalHome onNavigate={navigateTo} />}
-          {!isHome && activeFeatureId === 'markdown' && <MarkdownWorkspace onNavigate={navigateTo} />}
+          {!isHome && activeFeatureId === 'markdown' && <MarkdownWorkspace onNavigate={navigateTo} ownerEmail={session.email} />}
           {!isHome && activeFeatureId === 'notes' && <NotesApp ownerEmail={session.email} onNavigate={navigateTo} />}
         </MyPartnerPortal>
       )}

@@ -6,6 +6,7 @@ import { loadFromLocalStorage, saveToLocalStorage } from './lib/storage'
 import { demoFile, DEMO_FILE_ID } from './lib/demo'
 import { openFileFromSystem, saveToFileHandle, isFileSystemAccessSupported, watchFile } from './lib/file-system'
 import { getAllFileHandles, removeFileHandle, saveFileHandle } from './lib/indexed-db'
+import { pullServerFiles, pushFileCreate, pushFileDelete, pushFileUpdate } from './lib/md-sync'
 import type { MarkdownFile } from './types'
 
 type FileMap = Map<string, MarkdownFile>
@@ -19,7 +20,7 @@ function useLatestRef<T>(value: T) {
   return ref
 }
 
-function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void }) {
+function MarkdownWorkspace({ onNavigate, ownerEmail }: { onNavigate: (path: string) => void; ownerEmail?: string }) {
   const [files, setFiles] = useState<FileMap>(new Map())
   const [currentFileId, setCurrentFileId] = useState<string | null>(null)
   const [sidebarVisible, setSidebarVisible] = useState(() => (
@@ -43,44 +44,57 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
   useEffect(() => {
     const loadData = async () => {
       const savedFiles = loadFromLocalStorage<MarkdownFile[]>('uploadedFiles')
+      const filesMap: FileMap = new Map()
 
       if (savedFiles && savedFiles.length > 0) {
-        const filesMap: FileMap = new Map()
-        savedFiles.forEach(file => {
-          filesMap.set(file.id, file)
-        })
-        setFiles(filesMap)
+        savedFiles.forEach(file => filesMap.set(file.id, file))
+      } else {
+        filesMap.set(demoFile.id, demoFile)
+      }
 
-        // Restore selected file, default to demo if present
-        const savedId = localStorage.getItem('markdown-current-file-id')
-        const resolvedId = savedId && filesMap.has(savedId)
-          ? savedId
-          : filesMap.has(DEMO_FILE_ID)
-            ? DEMO_FILE_ID
-            : (filesMap.keys().next().value ?? null)
-        setCurrentFileId(resolvedId)
-
-        const handles = await getAllFileHandles()
-        setFileHandles(handles)
-
-        const modifiedTimes = new Map<string, number>()
-        for (const [fileId, handle] of handles.entries()) {
-          try {
-            const file = await handle.getFile()
-            modifiedTimes.set(fileId, file.lastModified)
-          } catch {
-            // Handle revoked — watcher will skip this file
+      // Merge Supabase files (non-system): server wins for newer updatedAt
+      if (ownerEmail) {
+        const serverFiles = await pullServerFiles(ownerEmail)
+        for (const sf of serverFiles) {
+          const local = filesMap.get(sf.id)
+          if (!local || (!local.isSystemFile && new Date(sf.updatedAt ?? '0') > new Date(local.updatedAt ?? '0'))) {
+            filesMap.set(sf.id, sf)
           }
         }
-        setFileModifiedTimes(modifiedTimes)
-      } else {
-        const seed: FileMap = new Map([[demoFile.id, demoFile]])
-        setFiles(seed)
-        setCurrentFileId(demoFile.id)
+        // Add server files not in localStorage
+        for (const sf of serverFiles) {
+          if (!filesMap.has(sf.id)) filesMap.set(sf.id, sf)
+        }
       }
+
+      setFiles(filesMap)
+
+      const savedId = localStorage.getItem('markdown-current-file-id')
+      const resolvedId = savedId && filesMap.has(savedId)
+        ? savedId
+        : filesMap.has(DEMO_FILE_ID)
+          ? DEMO_FILE_ID
+          : (filesMap.keys().next().value ?? null)
+      setCurrentFileId(resolvedId)
+
+      const handles = await getAllFileHandles()
+      setFileHandles(handles)
+
+      const modifiedTimes = new Map<string, number>()
+      for (const [fileId, handle] of handles.entries()) {
+        try {
+          const file = await handle.getFile()
+          modifiedTimes.set(fileId, file.lastModified)
+        } catch {
+          // Handle revoked — watcher will skip this file
+        }
+      }
+      setFileModifiedTimes(modifiedTimes)
     }
 
     void loadData()
+  // ownerEmail is stable — intentionally run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -97,6 +111,8 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
 
   const handleFileRemove = async (fileId: string) => {
     if (!confirm('Are you sure you want to remove this file?')) return
+
+    const removedFile = files.get(fileId)
 
     const watcher = watchersRef.current.get(fileId)
     if (watcher) {
@@ -124,17 +140,30 @@ function MarkdownWorkspace({ onNavigate }: { onNavigate: (path: string) => void 
     } else if (currentFileId === fileId) {
       setCurrentFileId(newFiles.keys().next().value ?? null)
     }
+
+    if (ownerEmail && removedFile && !removedFile.isSystemFile) {
+      void pushFileDelete(ownerEmail, fileId)
+    }
   }
+
+  // Debounce timers per file for Supabase sync
+  const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
   const handleFileUpdate = (fileId: string, newContent: string) => {
     const file = files.get(fileId)
     if (!file) return
 
-    setFiles(new Map(files).set(fileId, {
-      ...file,
-      content: newContent,
-      updatedAt: new Date().toISOString()
-    }))
+    const updated: MarkdownFile = { ...file, content: newContent, updatedAt: new Date().toISOString() }
+    setFiles(new Map(files).set(fileId, updated))
+
+    if (ownerEmail && !file.isSystemFile) {
+      const timer = syncTimers.current.get(fileId)
+      if (timer) clearTimeout(timer)
+      syncTimers.current.set(fileId, setTimeout(() => {
+        syncTimers.current.delete(fileId)
+        void pushFileUpdate(ownerEmail, updated)
+      }, 1500))
+    }
   }
 
   const handleExternalFileChange = useCallback((fileId: string, newContent: string, newLastModified: number) => {
