@@ -19,6 +19,7 @@ import {
   Table2,
   Trash2,
   Undo2,
+  X,
   type LucideIcon
 } from '@mypartner/common/dependencies'
 import { parseMarkdown } from '../lib/markdown'
@@ -36,6 +37,13 @@ interface ToolbarItem {
   textClass?: string
   label: string
   action: () => void
+}
+
+interface ImageOverlayRect {
+  left: number
+  top: number
+  width: number
+  height: number
 }
 
 const blockTags = new Set([
@@ -127,6 +135,12 @@ function serializeNode(node: Node): string {
       return `\n\n${'#'.repeat(level)} ${serializeChildren(node).trim()}\n\n`
     }
     case 'P': {
+      if (node.classList.contains('image-row')) {
+        const images = Array.from(node.children)
+          .filter(child => child.tagName === 'IMG')
+          .map(serializeNode)
+        return images.length ? `${images.join('\n')}\n\n` : '\n'
+      }
       const body = serializeChildren(node).trim()
       return body ? `${body}\n\n` : '\n'
     }
@@ -154,7 +168,10 @@ function serializeNode(node: Node): string {
     case 'IMG': {
       const src = node.getAttribute('src') ?? ''
       const alt = node.getAttribute('alt') ?? ''
-      return src ? `![${alt}](${src})` : ''
+      const width = node.getAttribute('width') || node.style.width.replace('px', '')
+      if (!src) return ''
+      if (width) return `<img src="${src}" alt="${alt}" width="${width}" />`
+      return `![${alt}](${src})`
     }
     case 'BLOCKQUOTE': {
       const body = serializeChildren(node).trim()
@@ -208,8 +225,38 @@ function htmlToMarkdown(element: HTMLElement) {
     .trim()
 }
 
+function isImageOnlyParagraph(paragraph: HTMLParagraphElement) {
+  const hasImage = Array.from(paragraph.children).some(child => child.tagName === 'IMG')
+  if (!hasImage) return false
+
+  return Array.from(paragraph.childNodes).every(node => {
+    if (node.nodeType === Node.TEXT_NODE) return !(node.textContent ?? '').trim()
+    return node instanceof HTMLElement && (node.tagName === 'IMG' || node.tagName === 'BR')
+  })
+}
+
+function decorateImageRows(container: HTMLElement) {
+  const paragraphs = Array.from(container.querySelectorAll('p'))
+
+  paragraphs.forEach(paragraph => {
+    paragraph.classList.toggle('image-row', isImageOnlyParagraph(paragraph))
+  })
+
+  for (const paragraph of Array.from(container.querySelectorAll<HTMLParagraphElement>('p.image-row'))) {
+    let next = paragraph.nextElementSibling
+    while (next instanceof HTMLParagraphElement && next.classList.contains('image-row')) {
+      paragraph.append(document.createTextNode('\n'))
+      Array.from(next.childNodes).forEach(child => paragraph.append(child))
+      const stale = next
+      next = next.nextElementSibling
+      stale.remove()
+    }
+  }
+}
+
 function MarkdownViewer({ content, markdownViewerRef, onContentChange }: MarkdownViewerProps) {
   const editable = Boolean(onContentChange)
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const internalMarkdown = useRef(content)
   const savedRange = useRef<Range | null>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -217,11 +264,134 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   const [deletePos, setDeletePos] = useState<{ x: number; y: number } | null>(null)
   const [copied, setCopied] = useState(false)
 
+  const selectedImgRef = useRef<HTMLImageElement | null>(null)
+  const imageOverlayRef = useRef<HTMLDivElement | null>(null)
+  const [imgOverlay, setImgOverlay] = useState<ImageOverlayRect | null>(null)
+  const resizingRef = useRef(false)
+  const movingImgRef = useRef(false)
+  const moveStartX = useRef(0)
+  const moveStartY = useRef(0)
+  const moveLastX = useRef(0)
+  const moveLastY = useRef(0)
+  const moveStartStyle = useRef({
+    cursor: '',
+    opacity: '',
+    pointerEvents: '',
+    position: '',
+    zIndex: ''
+  })
+  const resizeStartX = useRef(0)
+  const resizeStartW = useRef(0)
+  const [isMovingImage, setIsMovingImage] = useState(false)
+
+  const getVisibleImageRect = (img: HTMLImageElement): ImageOverlayRect | null => {
+    const viewer = markdownViewerRef.current
+    const root = rootRef.current
+    if (!viewer || !root) return null
+
+    const imageRect = img.getBoundingClientRect()
+    const viewerRect = viewer.getBoundingClientRect()
+    const rootRect = root.getBoundingClientRect()
+    const left = Math.max(imageRect.left, viewerRect.left, 8)
+    const top = Math.max(imageRect.top, viewerRect.top, 8)
+    const right = Math.min(imageRect.right, viewerRect.right, window.innerWidth - 8)
+    const bottom = Math.min(imageRect.bottom, viewerRect.bottom, window.innerHeight - 8)
+
+    if (right <= left || bottom <= top) return null
+    return { left: left - rootRect.left, top: top - rootRect.top, width: right - left, height: bottom - top }
+  }
+
+  const updateImageOverlay = () => {
+    const img = selectedImgRef.current
+    setImgOverlay(img ? getVisibleImageRect(img) : null)
+  }
+
+  const clearImageSelection = () => {
+    selectedImgRef.current = null
+    setImgOverlay(null)
+  }
+
+  const selectImage = (img: HTMLImageElement) => {
+    selectedImgRef.current = img
+    window.getSelection()?.removeAllRanges()
+    setDeletePos(null)
+    setImgOverlay(getVisibleImageRect(img))
+  }
+
+  const keepOrClearImageHover = (target: EventTarget | null) => {
+    const viewer = markdownViewerRef.current
+    if (!(target instanceof Node)) {
+      clearImageSelection()
+      return
+    }
+
+    if (target instanceof HTMLImageElement && viewer?.contains(target)) {
+      selectImage(target)
+      return
+    }
+
+    if (imageOverlayRef.current?.contains(target)) return
+
+    clearImageSelection()
+  }
+
+  const getCaretRangeFromPoint = (x: number, y: number) => {
+    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y)
+
+    const position = document.caretPositionFromPoint?.(x, y)
+    if (!position) return null
+
+    const range = document.createRange()
+    range.setStart(position.offsetNode, position.offset)
+    range.collapse(true)
+    return range
+  }
+
+  const getImageDropRange = (x: number, y: number) => {
+    const viewer = markdownViewerRef.current
+    const img = selectedImgRef.current
+    const range = getCaretRangeFromPoint(x, y)
+    if (!viewer || !img) return null
+    if (!range) {
+      const viewerRect = viewer.getBoundingClientRect()
+      if (x < viewerRect.left || x > viewerRect.right || y < viewerRect.top || y > viewerRect.bottom) return null
+      const appendRange = document.createRange()
+      appendRange.selectNodeContents(viewer)
+      appendRange.collapse(false)
+      return appendRange
+    }
+    if (!viewer.contains(range.startContainer)) return null
+    if (range.intersectsNode(img)) return null
+    return range
+  }
+
+  const moveImageToRange = (img: HTMLImageElement, range: Range, updateSelection = false) => {
+    range.insertNode(img)
+    range.setStartAfter(img)
+    range.collapse(true)
+    if (!updateSelection) return
+
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    selectedImgRef.current = img
+  }
+
+  const placeCaretAfterImage = (img: HTMLImageElement) => {
+    const range = document.createRange()
+    range.setStartAfter(img)
+    range.collapse(true)
+    const selection = window.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
   useEffect(() => {
     if (!editable) return
     const onSelectionChange = () => {
       const viewer = markdownViewerRef.current
       const sel = window.getSelection()
+      if (selectedImgRef.current) { setDeletePos(null); return }
       if (!viewer || !sel || sel.isCollapsed || !sel.rangeCount) { setDeletePos(null); return }
       const range = sel.getRangeAt(0)
       if (!viewer.contains(range.commonAncestorContainer)) { setDeletePos(null); return }
@@ -232,6 +402,15 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     document.addEventListener('selectionchange', onSelectionChange)
     return () => document.removeEventListener('selectionchange', onSelectionChange)
   }, [editable, markdownViewerRef])
+
+  useEffect(() => {
+    if (!editable) return
+    try {
+      document.execCommand('enableObjectResizing', false, 'false')
+    } catch {
+      // Some browsers do not support disabling native contenteditable image handles.
+    }
+  }, [editable])
 
   const handleDeleteSelection = () => {
     restoreSelection()
@@ -247,6 +426,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
 
     internalMarkdown.current = content
     viewer.innerHTML = parseMarkdown(content)
+    decorateImageRows(viewer)
 
     const headings = viewer.querySelectorAll('h1, h2, h3, h4, h5, h6')
     headings.forEach(heading => {
@@ -259,6 +439,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     if (!viewer || viewer.innerHTML) return
 
     viewer.innerHTML = parseMarkdown(content)
+    decorateImageRows(viewer)
     internalMarkdown.current = content
   }, [content, markdownViewerRef])
 
@@ -307,6 +488,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     const viewer = markdownViewerRef.current
     if (!viewer || !onContentChange) return
 
+    decorateImageRows(viewer)
     const nextMarkdown = htmlToMarkdown(viewer)
     internalMarkdown.current = nextMarkdown
     onContentChange(nextMarkdown)
@@ -434,6 +616,167 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     { type: 'icon', icon: ChevronDown, label: 'Collapsible Section', action: () => { insertCollapsible(); setIsMenuOpen(false) } }
   ]
 
+  const handleDeleteImage = () => {
+    selectedImgRef.current?.remove()
+    clearImageSelection()
+    syncContent()
+  }
+
+  const handleImagePointerDown = (e: React.PointerEvent, img: HTMLImageElement) => {
+    e.preventDefault()
+    selectImage(img)
+    let frameId = 0
+    let lastDropContainer: Node | null = null
+    let lastDropOffset = -1
+    moveStartX.current = e.clientX
+    moveStartY.current = e.clientY
+    moveLastX.current = e.clientX
+    moveLastY.current = e.clientY
+    moveStartStyle.current = {
+      cursor: img.style.cursor,
+      opacity: img.style.opacity,
+      pointerEvents: img.style.pointerEvents,
+      position: img.style.position,
+      zIndex: img.style.zIndex
+    }
+
+    const applyPendingMove = () => {
+      frameId = 0
+      const deltaX = moveLastX.current - moveStartX.current
+      const deltaY = moveLastY.current - moveStartY.current
+
+      if (!movingImgRef.current && Math.hypot(deltaX, deltaY) < 6) return
+
+      if (!movingImgRef.current) {
+        movingImgRef.current = true
+        setIsMovingImage(true)
+        img.dataset.imageMoving = 'true'
+        img.style.opacity = '0.55'
+        img.style.cursor = 'grabbing'
+        img.style.pointerEvents = 'none'
+        img.style.position = 'relative'
+        img.style.zIndex = '101'
+      }
+
+      const dropRange = getImageDropRange(moveLastX.current, moveLastY.current)
+      if (!dropRange) {
+        updateImageOverlay()
+        return
+      }
+
+      if (dropRange.startContainer === lastDropContainer && dropRange.startOffset === lastDropOffset) {
+        updateImageOverlay()
+        return
+      }
+
+      lastDropContainer = dropRange.startContainer
+      lastDropOffset = dropRange.startOffset
+      moveImageToRange(img, dropRange)
+      updateImageOverlay()
+    }
+
+    const scheduleMove = () => {
+      if (frameId) return
+      frameId = window.requestAnimationFrame(applyPendingMove)
+    }
+
+    const onMove = (ev: PointerEvent) => {
+      moveLastX.current = ev.clientX
+      moveLastY.current = ev.clientY
+      scheduleMove()
+    }
+
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      if (frameId) {
+        window.cancelAnimationFrame(frameId)
+        applyPendingMove()
+      }
+
+      const wasMoving = movingImgRef.current
+      movingImgRef.current = false
+      setIsMovingImage(false)
+      img.style.cursor = moveStartStyle.current.cursor
+      img.style.opacity = moveStartStyle.current.opacity
+      img.style.pointerEvents = moveStartStyle.current.pointerEvents
+      img.style.position = moveStartStyle.current.position
+      img.style.zIndex = moveStartStyle.current.zIndex
+      delete img.dataset.imageMoving
+
+      if (!wasMoving) {
+        updateImageOverlay()
+        return
+      }
+
+      selectedImgRef.current = img
+      placeCaretAfterImage(img)
+      updateImageOverlay()
+      syncContent()
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }
+
+  const handleResizePointerDown = (e: React.PointerEvent) => {
+    const img = selectedImgRef.current
+    if (!img) return
+    e.preventDefault()
+    resizingRef.current = true
+    resizeStartX.current = e.clientX
+    resizeStartW.current = img.offsetWidth
+
+    const onMove = (ev: PointerEvent) => {
+      if (!resizingRef.current || !selectedImgRef.current) return
+      const viewerWidth = markdownViewerRef.current?.clientWidth ?? Number.POSITIVE_INFINITY
+      const naturalWidth = selectedImgRef.current.naturalWidth || Number.POSITIVE_INFINITY
+      const maxWidth = Math.max(50, Math.min(viewerWidth, naturalWidth))
+      const newW = Math.max(50, Math.min(maxWidth, resizeStartW.current + ev.clientX - resizeStartX.current))
+      selectedImgRef.current.style.width = `${newW}px`
+      selectedImgRef.current.style.height = 'auto'
+      selectedImgRef.current.setAttribute('width', String(Math.round(newW)))
+      selectedImgRef.current.removeAttribute('height')
+      updateImageOverlay()
+    }
+
+    const onUp = () => {
+      resizingRef.current = false
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      syncContent()
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }
+
+  useEffect(() => {
+    if (!imgOverlay) return
+    const viewer = markdownViewerRef.current
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clearImageSelection()
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault()
+        handleDeleteImage()
+      }
+    }
+    const onPointerMove = (e: PointerEvent) => {
+      if (!resizingRef.current && !movingImgRef.current) keepOrClearImageHover(e.target)
+    }
+    const onScroll = () => updateImageOverlay()
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointermove', onPointerMove)
+    viewer?.addEventListener('scroll', onScroll)
+    window.addEventListener('resize', onScroll)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointermove', onPointerMove)
+      viewer?.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [imgOverlay, markdownViewerRef])
+
   const handleCopyMarkdown = async () => {
     await navigator.clipboard.writeText(internalMarkdown.current)
     setCopied(true)
@@ -443,7 +786,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   const btnBase = 'flex shrink-0 items-center justify-center rounded text-forest transition-colors duration-150 hover:bg-forest/10 active:scale-95 cursor-pointer'
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-surface-0 animate-fade-in">
+    <div ref={rootRef} className="relative flex-1 flex flex-col overflow-hidden bg-surface-0 animate-fade-in">
       {editable && (
         <div className="sticky top-0 z-10 flex items-center border-b border-line bg-surface-2 shrink-0">
           <div className="flex items-center px-3 py-1.5 gap-0.5 overflow-x-auto min-w-0">
@@ -534,8 +877,43 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         onFocus={saveSelection}
         onMouseUp={saveSelection}
         onKeyUp={saveSelection}
+        onPointerDown={(e) => {
+          if (e.target instanceof HTMLImageElement) handleImagePointerDown(e, e.target)
+        }}
+        onMouseDown={(e) => {
+          if (e.target instanceof HTMLImageElement) {
+            e.preventDefault()
+            selectImage(e.target)
+          }
+        }}
+        onMouseOver={(e) => {
+          if (e.target instanceof HTMLImageElement) selectImage(e.target)
+        }}
+        onClick={(e) => {
+          if (e.target instanceof HTMLImageElement) {
+            selectImage(e.target)
+          } else {
+            clearImageSelection()
+          }
+        }}
         onPaste={event => {
           event.preventDefault()
+
+          const items = Array.from(event.clipboardData.items)
+          const imageItem = items.find(item => item.type.startsWith('image/'))
+
+          if (imageItem) {
+            const file = imageItem.getAsFile()
+            if (file) {
+              const reader = new FileReader()
+              reader.onload = () => {
+                runCommand('insertHTML', `<img src="${reader.result as string}" alt="" style="max-width:100%" />`)
+              }
+              reader.readAsDataURL(file)
+              return
+            }
+          }
+
           const text = event.clipboardData.getData('text/plain')
           document.execCommand('insertText', false, text)
           syncContent()
@@ -562,6 +940,29 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
           Delete
         </button>
       )}
+
+      {imgOverlay && editable && (
+        <div ref={imageOverlayRef} style={{ position: 'absolute', left: imgOverlay.left, top: imgOverlay.top, width: imgOverlay.width, height: imgOverlay.height, pointerEvents: 'none', zIndex: 100, cursor: isMovingImage ? 'grabbing' : undefined }}>
+          {/* selection border */}
+          <div style={{ position: 'absolute', inset: 0, border: '2px solid var(--color-forest)', borderRadius: 2, pointerEvents: 'none' }} />
+          {/* remove button */}
+          <button
+            style={{ position: 'absolute', top: 4, right: 4, pointerEvents: 'all' }}
+            className="w-5 h-5 bg-crimson text-white rounded-full flex items-center justify-center shadow cursor-pointer"
+            title="Remove image"
+            onMouseDown={e => e.preventDefault()}
+            onClick={handleDeleteImage}
+          >
+            <X className="w-3 h-3" />
+          </button>
+          {/* resize handle */}
+          <div
+            style={{ position: 'absolute', bottom: 4, right: 4, width: 12, height: 12, pointerEvents: 'all', cursor: 'se-resize', background: 'var(--color-forest)', borderRadius: 2, border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
+            onPointerDown={handleResizePointerDown}
+          />
+        </div>
+      )}
+
     </div>
   )
 }
