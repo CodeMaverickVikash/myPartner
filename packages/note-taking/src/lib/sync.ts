@@ -144,6 +144,7 @@ export async function pullServerNotes(ownerEmail: string): Promise<void> {
 
   const localNotes = await getAllOwnerNotes(ownerEmail)
   const localByServerId = new Map(localNotes.filter(note => note.serverId).map(note => [note.serverId!, note]))
+  const serverIds = new Set(serverNotes.map(n => n.id))
   const now = new Date().toISOString()
 
   const incoming = serverNotes.flatMap((serverNote): LocalNote[] => {
@@ -185,4 +186,15 @@ export async function pullServerNotes(ownerEmail: string): Promise<void> {
   })
 
   await saveNotes(incoming)
+
+  // Purge local notes that no longer exist on the server (server-side deletes).
+  // Only remove clean synced notes — leave pending/failed/syncing alone since they
+  // have unsynced local changes that haven't reached the server yet.
+  const staleSynced = localNotes.filter(note =>
+    note.serverId &&
+    !serverIds.has(note.serverId) &&
+    note.syncStatus === 'synced' &&
+    !note.deletedAt,
+  )
+  await Promise.all(staleSynced.map(note => deleteNote(note.localId)))
 }
