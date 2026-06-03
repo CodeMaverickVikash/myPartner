@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import {
+  Check,
   Code,
   Code2,
   ChevronDown,
+  Copy,
   Ellipsis,
   Image,
   Link,
@@ -213,6 +215,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [deletePos, setDeletePos] = useState<{ x: number; y: number } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!editable) return
@@ -431,6 +434,12 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     { type: 'icon', icon: ChevronDown, label: 'Collapsible Section', action: () => { insertCollapsible(); setIsMenuOpen(false) } }
   ]
 
+  const handleCopyMarkdown = async () => {
+    await navigator.clipboard.writeText(internalMarkdown.current)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   const btnBase = 'flex shrink-0 items-center justify-center rounded text-forest transition-colors duration-150 hover:bg-forest/10 active:scale-95 cursor-pointer'
 
   return (
@@ -501,6 +510,18 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
               </div>
             )}
           </div>
+
+          <div className="w-px h-5 bg-line shrink-0" />
+
+          <button
+            type="button"
+            onMouseDown={e => e.preventDefault()}
+            onClick={handleCopyMarkdown}
+            className={`${btnBase} h-7 w-7 mx-1.5`}
+            title="Copy markdown"
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
         </div>
       )}
 
