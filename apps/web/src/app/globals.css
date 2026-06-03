@@ -95,7 +95,7 @@ body {
 /* Smooth fade animation */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
 .animate-fade-in {
   animation: fade-in 0.15s ease-out both;
@@ -248,10 +248,11 @@ body {
 }
 
 .markdown-content img {
+  display: block;
   max-width: 100%;
   height: auto;
   border-radius: 0.75rem;
-  margin: 1.5rem 0;
+  margin: 1.5rem auto;
   box-shadow: 0 4px 16px rgba(0,0,0,0.08);
 }
 
@@ -264,9 +265,15 @@ body {
 }
 
 .markdown-content .image-row img {
-  flex: 0 1 auto;
+  flex: 1 1 0;
+  min-width: 100px;
   max-width: 100%;
+  height: auto;
   margin: 0;
+}
+
+.markdown-content[contenteditable="false"] img {
+  cursor: zoom-in;
 }
 
 .markdown-content hr {

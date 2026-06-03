@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { RefObject } from 'react'
 import {
   Check,
@@ -7,6 +8,7 @@ import {
   ChevronDown,
   Copy,
   Ellipsis,
+  Eye,
   Image,
   Link,
   List,
@@ -19,9 +21,9 @@ import {
   Table2,
   Trash2,
   Undo2,
-  X,
   type LucideIcon
 } from '@mypartner/common/dependencies'
+import ImageLightbox from './ImageLightbox'
 import { parseMarkdown } from '../lib/markdown'
 
 interface MarkdownViewerProps {
@@ -266,6 +268,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
 
   const selectedImgRef = useRef<HTMLImageElement | null>(null)
   const imageOverlayRef = useRef<HTMLDivElement | null>(null)
+  const overlayToolbarRef = useRef<HTMLDivElement | null>(null)
   const [imgOverlay, setImgOverlay] = useState<ImageOverlayRect | null>(null)
   const resizingRef = useRef(false)
   const movingImgRef = useRef(false)
@@ -282,23 +285,23 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   })
   const resizeStartX = useRef(0)
   const resizeStartW = useRef(0)
-  const [isMovingImage, setIsMovingImage] = useState(false)
+  const [resizeWidth, setResizeWidth] = useState<number | null>(null)
+
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null)
+
+  const openLightbox = (img: HTMLImageElement) => {
+    setLightbox({ src: img.src, alt: img.alt })
+  }
 
   const getVisibleImageRect = (img: HTMLImageElement): ImageOverlayRect | null => {
     const viewer = markdownViewerRef.current
-    const root = rootRef.current
-    if (!viewer || !root) return null
-
-    const imageRect = img.getBoundingClientRect()
+    if (!viewer) return null
+    const rect = img.getBoundingClientRect()
     const viewerRect = viewer.getBoundingClientRect()
-    const rootRect = root.getBoundingClientRect()
-    const left = Math.max(imageRect.left, viewerRect.left, 8)
-    const top = Math.max(imageRect.top, viewerRect.top, 8)
-    const right = Math.min(imageRect.right, viewerRect.right, window.innerWidth - 8)
-    const bottom = Math.min(imageRect.bottom, viewerRect.bottom, window.innerHeight - 8)
-
-    if (right <= left || bottom <= top) return null
-    return { left: left - rootRect.left, top: top - rootRect.top, width: right - left, height: bottom - top }
+    if (rect.bottom < viewerRect.top || rect.top > viewerRect.bottom) return null
+    const top = Math.max(rect.top, viewerRect.top)
+    const bottom = Math.min(rect.bottom, viewerRect.bottom)
+    return { left: rect.left, top, width: rect.width, height: bottom - top }
   }
 
   const updateImageOverlay = () => {
@@ -307,32 +310,22 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   }
 
   const clearImageSelection = () => {
+    if (selectedImgRef.current) {
+      selectedImgRef.current.style.cursor = ''
+    }
     selectedImgRef.current = null
     setImgOverlay(null)
   }
 
   const selectImage = (img: HTMLImageElement) => {
+    if (selectedImgRef.current && selectedImgRef.current !== img) {
+      selectedImgRef.current.style.cursor = ''
+    }
     selectedImgRef.current = img
+    img.style.cursor = 'grab'
     window.getSelection()?.removeAllRanges()
     setDeletePos(null)
     setImgOverlay(getVisibleImageRect(img))
-  }
-
-  const keepOrClearImageHover = (target: EventTarget | null) => {
-    const viewer = markdownViewerRef.current
-    if (!(target instanceof Node)) {
-      clearImageSelection()
-      return
-    }
-
-    if (target instanceof HTMLImageElement && viewer?.contains(target)) {
-      selectImage(target)
-      return
-    }
-
-    if (imageOverlayRef.current?.contains(target)) return
-
-    clearImageSelection()
   }
 
   const getCaretRangeFromPoint = (x: number, y: number) => {
@@ -649,7 +642,6 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
 
       if (!movingImgRef.current) {
         movingImgRef.current = true
-        setIsMovingImage(true)
         img.dataset.imageMoving = 'true'
         img.style.opacity = '0.55'
         img.style.cursor = 'grabbing'
@@ -696,7 +688,6 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
 
       const wasMoving = movingImgRef.current
       movingImgRef.current = false
-      setIsMovingImage(false)
       img.style.cursor = moveStartStyle.current.cursor
       img.style.opacity = moveStartStyle.current.opacity
       img.style.pointerEvents = moveStartStyle.current.pointerEvents
@@ -719,29 +710,34 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     document.addEventListener('pointerup', onUp)
   }
 
-  const handleResizePointerDown = (e: React.PointerEvent) => {
+  const handleResizePointerDown = (e: React.PointerEvent, corner: 'nw' | 'ne' | 'sw' | 'se') => {
     const img = selectedImgRef.current
     if (!img) return
     e.preventDefault()
+    e.stopPropagation()
     resizingRef.current = true
     resizeStartX.current = e.clientX
     resizeStartW.current = img.offsetWidth
+    const leftSide = corner === 'nw' || corner === 'sw'
 
     const onMove = (ev: PointerEvent) => {
       if (!resizingRef.current || !selectedImgRef.current) return
       const viewerWidth = markdownViewerRef.current?.clientWidth ?? Number.POSITIVE_INFINITY
       const naturalWidth = selectedImgRef.current.naturalWidth || Number.POSITIVE_INFINITY
       const maxWidth = Math.max(50, Math.min(viewerWidth, naturalWidth))
-      const newW = Math.max(50, Math.min(maxWidth, resizeStartW.current + ev.clientX - resizeStartX.current))
+      const delta = leftSide ? resizeStartX.current - ev.clientX : ev.clientX - resizeStartX.current
+      const newW = Math.max(50, Math.min(maxWidth, resizeStartW.current + delta))
       selectedImgRef.current.style.width = `${newW}px`
       selectedImgRef.current.style.height = 'auto'
       selectedImgRef.current.setAttribute('width', String(Math.round(newW)))
       selectedImgRef.current.removeAttribute('height')
+      setResizeWidth(Math.round(newW))
       updateImageOverlay()
     }
 
     const onUp = () => {
       resizingRef.current = false
+      setResizeWidth(null)
       document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerup', onUp)
       syncContent()
@@ -750,6 +746,30 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
   }
+
+  // Sync overlay position directly to DOM — runs after every render so position is never stale
+  useEffect(() => {
+    const img = selectedImgRef.current
+    const el = imageOverlayRef.current
+    if (!img || !el || !imgOverlay) return
+    const rect = getVisibleImageRect(img)
+    if (!rect) return
+    el.style.left = `${rect.left}px`
+    el.style.top = `${rect.top}px`
+    el.style.width = `${rect.width}px`
+    el.style.height = `${rect.height}px`
+    const toolbar = overlayToolbarRef.current
+    if (toolbar) {
+      const viewerTop = markdownViewerRef.current?.getBoundingClientRect().top ?? 0
+      if (rect.top - viewerTop > 40) {
+        toolbar.style.bottom = '100%'; toolbar.style.marginBottom = '6px'
+        toolbar.style.top = ''; toolbar.style.marginTop = ''
+      } else {
+        toolbar.style.top = '100%'; toolbar.style.marginTop = '6px'
+        toolbar.style.bottom = ''; toolbar.style.marginBottom = ''
+      }
+    }
+  })
 
   useEffect(() => {
     if (!imgOverlay) return
@@ -761,17 +781,34 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         handleDeleteImage()
       }
     }
-    const onPointerMove = (e: PointerEvent) => {
-      if (!resizingRef.current && !movingImgRef.current) keepOrClearImageHover(e.target)
+    // Direct DOM update during scroll — no setImgOverlay so no re-render lag
+    const onScroll = () => {
+      const img = selectedImgRef.current
+      const el = imageOverlayRef.current
+      if (!img || !el) return
+      const rect = getVisibleImageRect(img)
+      if (!rect) { clearImageSelection(); return }
+      el.style.left = `${rect.left}px`
+      el.style.top = `${rect.top}px`
+      el.style.width = `${rect.width}px`
+      el.style.height = `${rect.height}px`
+      const toolbar = overlayToolbarRef.current
+      if (toolbar) {
+        const viewerTop = markdownViewerRef.current?.getBoundingClientRect().top ?? 0
+        if (rect.top - viewerTop > 40) {
+          toolbar.style.bottom = '100%'; toolbar.style.marginBottom = '6px'
+          toolbar.style.top = ''; toolbar.style.marginTop = ''
+        } else {
+          toolbar.style.top = '100%'; toolbar.style.marginTop = '6px'
+          toolbar.style.bottom = ''; toolbar.style.marginBottom = ''
+        }
+      }
     }
-    const onScroll = () => updateImageOverlay()
     document.addEventListener('keydown', onKey)
-    document.addEventListener('pointermove', onPointerMove)
     viewer?.addEventListener('scroll', onScroll)
     window.addEventListener('resize', onScroll)
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.removeEventListener('pointermove', onPointerMove)
       viewer?.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
     }
@@ -877,21 +914,22 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         onFocus={saveSelection}
         onMouseUp={saveSelection}
         onKeyUp={saveSelection}
-        onPointerDown={(e) => {
+        onPointerDown={editable ? (e) => {
           if (e.target instanceof HTMLImageElement) handleImagePointerDown(e, e.target)
-        }}
-        onMouseDown={(e) => {
+        } : undefined}
+        onMouseDown={editable ? (e) => {
           if (e.target instanceof HTMLImageElement) {
             e.preventDefault()
             selectImage(e.target)
           }
-        }}
-        onMouseOver={(e) => {
-          if (e.target instanceof HTMLImageElement) selectImage(e.target)
-        }}
+        } : undefined}
         onClick={(e) => {
           if (e.target instanceof HTMLImageElement) {
-            selectImage(e.target)
+            if (editable) {
+              selectImage(e.target)
+            } else {
+              openLightbox(e.target)
+            }
           } else {
             clearImageSelection()
           }
@@ -929,7 +967,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         spellCheck={editable}
       />
 
-      {deletePos && editable && (
+      {deletePos && editable && createPortal(
         <button
           style={{ position: 'fixed', left: deletePos.x, top: deletePos.y, transform: 'translate(-50%, calc(-100% - 6px))' }}
           className="z-200 flex items-center gap-1.5 px-2.5 py-1 bg-crimson text-white text-xs font-medium rounded-md shadow-lg cursor-pointer select-none transition-opacity"
@@ -938,31 +976,78 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         >
           <Trash2 className="w-3 h-3" />
           Delete
-        </button>
+        </button>,
+        document.body
       )}
 
-      {imgOverlay && editable && (
-        <div ref={imageOverlayRef} style={{ position: 'absolute', left: imgOverlay.left, top: imgOverlay.top, width: imgOverlay.width, height: imgOverlay.height, pointerEvents: 'none', zIndex: 100, cursor: isMovingImage ? 'grabbing' : undefined }}>
-          {/* selection border */}
-          <div style={{ position: 'absolute', inset: 0, border: '2px solid var(--color-forest)', borderRadius: 2, pointerEvents: 'none' }} />
-          {/* remove button */}
-          <button
-            style={{ position: 'absolute', top: 4, right: 4, pointerEvents: 'all' }}
-            className="w-5 h-5 bg-crimson text-white rounded-full flex items-center justify-center shadow cursor-pointer"
-            title="Remove image"
-            onMouseDown={e => e.preventDefault()}
-            onClick={handleDeleteImage}
-          >
-            <X className="w-3 h-3" />
-          </button>
-          {/* resize handle */}
+      {imgOverlay && editable && createPortal(
+        <div
+          ref={imageOverlayRef}
+          style={{ position: 'fixed', pointerEvents: 'none', zIndex: 200 }}
+        >
+          {/* floating toolbar — position is set imperatively by useEffect / scroll handler */}
           <div
-            style={{ position: 'absolute', bottom: 4, right: 4, width: 12, height: 12, pointerEvents: 'all', cursor: 'se-resize', background: 'var(--color-forest)', borderRadius: 2, border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
-            onPointerDown={handleResizePointerDown}
+            ref={overlayToolbarRef}
+            style={{ position: 'absolute', left: 0, pointerEvents: 'all' }}
+            className="flex items-center gap-1.5 bg-surface-0 border border-line rounded-lg shadow-lg px-2 py-1 select-none"
+          >
+            {resizeWidth !== null && (
+              <>
+                <span className="text-xs text-ink-2 font-mono tabular-nums">{resizeWidth}px</span>
+                <div className="w-px h-3.5 bg-line" />
+              </>
+            )}
+            <button
+              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-ink-2 hover:bg-surface-2 rounded cursor-pointer transition-colors"
+              title="View image"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => selectedImgRef.current && openLightbox(selectedImgRef.current)}
+            >
+              <Eye className="w-3 h-3" />
+              View
+            </button>
+            <div className="w-px h-3.5 bg-line" />
+            <button
+              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-crimson hover:bg-crimson/10 rounded cursor-pointer transition-colors"
+              title="Delete image (Del)"
+              onMouseDown={e => e.preventDefault()}
+              onClick={handleDeleteImage}
+            >
+              <Trash2 className="w-3 h-3" />
+              Delete
+            </button>
+          </div>
+
+          {/* selection border */}
+          <div style={{ position: 'absolute', inset: 0, border: '2px solid var(--color-forest)', borderRadius: 12, pointerEvents: 'none', boxShadow: '0 0 0 3px color-mix(in srgb, var(--color-forest) 15%, transparent)' }} />
+
+          {/* NW corner handle */}
+          <div
+            style={{ position: 'absolute', top: -5, left: -5, width: 10, height: 10, pointerEvents: 'all', cursor: 'nwse-resize', background: 'white', border: '2px solid var(--color-forest)', borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }}
+            onPointerDown={e => handleResizePointerDown(e, 'nw')}
           />
-        </div>
+          {/* NE corner handle */}
+          <div
+            style={{ position: 'absolute', top: -5, right: -5, width: 10, height: 10, pointerEvents: 'all', cursor: 'nesw-resize', background: 'white', border: '2px solid var(--color-forest)', borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }}
+            onPointerDown={e => handleResizePointerDown(e, 'ne')}
+          />
+          {/* SW corner handle */}
+          <div
+            style={{ position: 'absolute', bottom: -5, left: -5, width: 10, height: 10, pointerEvents: 'all', cursor: 'nesw-resize', background: 'white', border: '2px solid var(--color-forest)', borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }}
+            onPointerDown={e => handleResizePointerDown(e, 'sw')}
+          />
+          {/* SE corner handle */}
+          <div
+            style={{ position: 'absolute', bottom: -5, right: -5, width: 10, height: 10, pointerEvents: 'all', cursor: 'nwse-resize', background: 'white', border: '2px solid var(--color-forest)', borderRadius: '50%', boxShadow: '0 1px 4px rgba(0,0,0,0.2)' }}
+            onPointerDown={e => handleResizePointerDown(e, 'se')}
+          />
+        </div>,
+        document.body
       )}
 
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+      )}
     </div>
   )
 }
