@@ -141,7 +141,7 @@ function serializeNode(node: Node): string {
         const images = Array.from(node.children)
           .filter(child => child.tagName === 'IMG')
           .map(serializeNode)
-        return images.length ? `${images.join('\n')}\n\n` : '\n'
+        return images.length ? `${images.join(' ')}\n\n` : '\n'
       }
       const body = serializeChildren(node).trim()
       return body ? `${body}\n\n` : '\n'
@@ -254,6 +254,14 @@ function decorateImageRows(container: HTMLElement) {
       stale.remove()
     }
   }
+
+  for (const paragraph of Array.from(container.querySelectorAll<HTMLParagraphElement>('p.image-row'))) {
+    paragraph.querySelectorAll('br').forEach(br => br.remove())
+    Array.from(paragraph.childNodes).forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE && !(node.textContent ?? '').trim()) node.remove()
+    })
+    if (!paragraph.querySelector('img')) paragraph.remove()
+  }
 }
 
 function MarkdownViewer({ content, markdownViewerRef, onContentChange }: MarkdownViewerProps) {
@@ -340,11 +348,71 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     return range
   }
 
+  const findImageRowAtPoint = (x: number, y: number) => {
+    const viewer = markdownViewerRef.current
+    if (!viewer) return null
+
+    const element = document.elementFromPoint(x, y)
+    const rowFromPoint = element?.closest?.('p.image-row')
+    if (rowFromPoint instanceof HTMLParagraphElement && viewer.contains(rowFromPoint)) {
+      return rowFromPoint
+    }
+
+    return Array.from(viewer.querySelectorAll<HTMLParagraphElement>('p.image-row')).find(row => {
+      const rect = row.getBoundingClientRect()
+      return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+    }) ?? null
+  }
+
+  const getImageRowDropRange = (row: HTMLParagraphElement, x: number, y: number) => {
+    const img = selectedImgRef.current
+    const images = Array.from(row.children).filter(
+      child => child instanceof HTMLImageElement && child !== img
+    ) as HTMLImageElement[]
+    const range = document.createRange()
+
+    if (images.length === 0) {
+      range.selectNodeContents(row)
+      range.collapse(false)
+      return range
+    }
+
+    const closestLineCenter = images.reduce((closest, image) => {
+      const rect = image.getBoundingClientRect()
+      const centerY = rect.top + rect.height / 2
+      const distance = Math.abs(y - centerY)
+      return distance < closest.distance ? { y: centerY, distance } : closest
+    }, { y: 0, distance: Number.POSITIVE_INFINITY })
+
+    const lineImages = images.filter(image => {
+      const rect = image.getBoundingClientRect()
+      const centerY = rect.top + rect.height / 2
+      return Math.abs(centerY - closestLineCenter.y) < Math.max(8, rect.height / 2)
+    }).sort((first, second) => first.getBoundingClientRect().left - second.getBoundingClientRect().left)
+
+    for (const image of lineImages) {
+      const rect = image.getBoundingClientRect()
+      if (x < rect.left + rect.width / 2) {
+        range.setStartBefore(image)
+        range.collapse(true)
+        return range
+      }
+    }
+
+    range.setStartAfter(lineImages[lineImages.length - 1] ?? images[images.length - 1])
+    range.collapse(true)
+    return range
+  }
+
   const getImageDropRange = (x: number, y: number) => {
     const viewer = markdownViewerRef.current
     const img = selectedImgRef.current
-    const range = getCaretRangeFromPoint(x, y)
     if (!viewer || !img) return null
+
+    const imageRow = findImageRowAtPoint(x, y)
+    if (imageRow) return getImageRowDropRange(imageRow, x, y)
+
+    const range = getCaretRangeFromPoint(x, y)
     if (!range) {
       const viewerRect = viewer.getBoundingClientRect()
       if (x < viewerRect.left || x > viewerRect.right || y < viewerRect.top || y > viewerRect.bottom) return null
@@ -678,13 +746,15 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
       scheduleMove()
     }
 
-    const onUp = () => {
+    const onUp = (ev: PointerEvent) => {
       document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerup', onUp)
+      moveLastX.current = ev.clientX
+      moveLastY.current = ev.clientY
       if (frameId) {
         window.cancelAnimationFrame(frameId)
-        applyPendingMove()
       }
+      applyPendingMove()
 
       const wasMoving = movingImgRef.current
       movingImgRef.current = false
