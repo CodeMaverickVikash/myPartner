@@ -10,29 +10,103 @@ interface ImageLightboxProps {
 
 export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
   const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const imageRef = useRef<HTMLImageElement | null>(null)
+  const panStartRef = useRef({ pointerX: 0, pointerY: 0, panX: 0, panY: 0, moved: false })
+
+  const clampPan = (nextPan: { x: number; y: number }, nextZoom = zoom) => {
+    const container = containerRef.current
+    const image = imageRef.current
+    if (!container || !image || nextZoom <= 1) return { x: 0, y: 0 }
+
+    const maxX = Math.max(0, (image.offsetWidth * nextZoom - container.clientWidth) / 2)
+    const maxY = Math.max(0, (image.offsetHeight * nextZoom - container.clientHeight) / 2)
+
+    return {
+      x: Math.max(-maxX, Math.min(maxX, nextPan.x)),
+      y: Math.max(-maxY, Math.min(maxY, nextPan.y))
+    }
+  }
+
+  const updateZoom = (getNextZoom: (current: number) => number) => {
+    setZoom(current => {
+      const nextZoom = getNextZoom(current)
+      setPan(currentPan => clampPan(currentPan, nextZoom))
+      return nextZoom
+    })
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
-      if (e.key === '+' || e.key === '=') setZoom(z => Math.min(5, +(z * 1.25).toFixed(2)))
-      if (e.key === '-') setZoom(z => Math.max(0.25, +(z / 1.25).toFixed(2)))
-      if (e.key === '0') setZoom(1)
+      if (e.key === '+' || e.key === '=') updateZoom(z => Math.min(5, +(z * 1.25).toFixed(2)))
+      if (e.key === '-') updateZoom(z => Math.max(0.25, +(z / 1.25).toFixed(2)))
+      if (e.key === '0') updateZoom(() => 1)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, zoom])
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      setZoom(z => Math.max(0.25, Math.min(5, +(z * (e.deltaY < 0 ? 1.1 : 0.9)).toFixed(2))))
+      updateZoom(z => Math.max(0.25, Math.min(5, +(z * (e.deltaY < 0 ? 1.1 : 0.9)).toFixed(2))))
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [zoom])
+
+  useEffect(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [src])
+
+  useEffect(() => {
+    const onResize = () => setPan(currentPan => clampPan(currentPan))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [zoom])
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    e.stopPropagation()
+    if (zoom <= 1) return
+
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    panStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      moved: false
+    }
+    setIsPanning(true)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isPanning) return
+    e.preventDefault()
+    const nextPan = {
+      x: panStartRef.current.panX + e.clientX - panStartRef.current.pointerX,
+      y: panStartRef.current.panY + e.clientY - panStartRef.current.pointerY
+    }
+
+    if (Math.hypot(e.clientX - panStartRef.current.pointerX, e.clientY - panStartRef.current.pointerY) > 3) {
+      panStartRef.current.moved = true
+    }
+
+    setPan(clampPan(nextPan))
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (!isPanning) return
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    setIsPanning(false)
+  }
 
   return createPortal(
     <div
@@ -67,21 +141,21 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
         <button
           style={{ color: 'rgba(255,255,255,0.85)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px 6px', borderRadius: 4 }}
           title="Zoom out (-)"
-          onClick={() => setZoom(z => Math.max(0.25, +(z / 1.25).toFixed(2)))}
+          onClick={() => updateZoom(z => Math.max(0.25, +(z / 1.25).toFixed(2)))}
         >
           <ZoomOut className="w-4 h-4" />
         </button>
         <button
           style={{ color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 11, minWidth: 42, textAlign: 'center', fontVariantNumeric: 'tabular-nums', padding: '4px 2px' }}
           title="Reset zoom (0)"
-          onClick={() => setZoom(1)}
+          onClick={() => updateZoom(() => 1)}
         >
           {Math.round(zoom * 100)}%
         </button>
         <button
           style={{ color: 'rgba(255,255,255,0.85)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px 6px', borderRadius: 4 }}
           title="Zoom in (+)"
-          onClick={() => setZoom(z => Math.min(5, +(z * 1.25).toFixed(2)))}
+          onClick={() => updateZoom(z => Math.min(5, +(z * 1.25).toFixed(2)))}
         >
           <ZoomIn className="w-4 h-4" />
         </button>
@@ -97,6 +171,7 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
 
       {/* Image */}
       <img
+        ref={imageRef}
         src={src}
         alt={alt}
         draggable={false}
@@ -105,16 +180,22 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
           maxWidth: '90vw',
           maxHeight: '85vh',
           objectFit: 'contain',
-          transform: `scale(${zoom})`,
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: 'center center',
-          transition: 'transform 0.15s ease',
+          transition: isPanning ? 'none' : 'transform 0.15s ease',
           borderRadius: 8,
           boxShadow: '0 8px 48px rgba(0,0,0,0.5)',
-          cursor: zoom > 1 ? 'zoom-out' : 'zoom-in'
+          cursor: zoom > 1 ? (isPanning ? 'grabbing' : 'grab') : 'zoom-in',
+          touchAction: 'none'
         }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => setIsPanning(false)}
         onClick={(e) => {
           e.stopPropagation()
-          setZoom(z => z > 1 ? 1 : 2)
+          if (panStartRef.current.moved) return
+          updateZoom(z => z > 1 ? 1 : 2)
         }}
       />
 
