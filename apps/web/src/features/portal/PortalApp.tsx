@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from '@mypartner/common/dependencies'
 import { MarkdownWorkspace } from '@mypartner/markdown-editor'
-import { NotesApp } from '@mypartner/note-taking'
+import { NotesApp, SharedNotePage } from '@mypartner/note-taking'
 import {
   MyPartnerLogin,
   MyPartnerPortal,
@@ -60,6 +60,8 @@ const navigateTo = (nextPath: string, replace = false) => {
 }
 
 const getRedirectPath = (path: string, hasSession: boolean) => {
+  if (getSharedNoteToken(path)) return null
+
   if (!hasSession) {
     return path === '/login' ? null : '/login'
   }
@@ -75,6 +77,11 @@ const getRedirectPath = (path: string, hasSession: boolean) => {
 const getActiveFeatureId = (path: string): FeatureId => {
   if (path === '/portal/notes') return 'notes'
   return 'markdown'
+}
+
+const getSharedNoteToken = (path: string) => {
+  const match = path.match(/^\/share\/notes\/([^/]+)$/)
+  return match?.[1] ?? null
 }
 
 function PortalApp() {
@@ -113,6 +120,7 @@ function PortalApp() {
   const toggleTheme = () => setTheme(currentTheme => currentTheme === 'dark' ? 'light' : 'dark')
   const isHome = path === '/portal/home'
   const activeFeatureId = getActiveFeatureId(path)
+  const sharedNoteToken = getSharedNoteToken(path)
 
   return (
     <>
@@ -147,7 +155,9 @@ function PortalApp() {
         }}
       />
 
-      {!session ? (
+      {sharedNoteToken ? (
+        <SharedNotePage token={sharedNoteToken} />
+      ) : !session ? (
         <MyPartnerLogin
           theme={theme}
           onLogin={handleLogin}

@@ -63,6 +63,7 @@ Open `http://localhost:3000` during development.
 - `/login`
 - `/portal/markdown`
 - `/portal/notes`
+- `/share/notes/:token`
 
 ## Project Structure
 
@@ -97,7 +98,12 @@ The backend exposes:
 - `POST /api/notes`
 - `PATCH /api/notes/:id`
 - `DELETE /api/notes/:id`
+- `PATCH /api/notes/:id/share`
 - `POST /api/notes/sync`
+- `GET /api/shared-notes/:token`
+- `PATCH /api/shared-notes/:token`
+
+For note sharing, apply `apps/web/backend/supabase/notes-share.sql` to add `share_mode` and `share_token` columns to the Supabase `notes` table.
 
 Add these environment variables locally and in your deployment:
 

@@ -1,4 +1,5 @@
 export type NoteColor = 'mint' | 'sky' | 'coral' | 'gold'
+export type NoteShareMode = 'private' | 'read' | 'edit'
 
 export interface Note {
   id: string
@@ -6,6 +7,8 @@ export interface Note {
   body: string
   color: NoteColor
   pinned: boolean
+  shareMode: NoteShareMode
+  shareToken: string | null
   createdAt: string
   updatedAt: string
 }
@@ -17,11 +20,14 @@ export interface NoteRow {
   body: string
   color: NoteColor
   pinned: boolean
+  share_mode: NoteShareMode | null
+  share_token: string | null
   created_at: string
   updated_at: string
 }
 
 export const noteColors: NoteColor[] = ['mint', 'sky', 'coral', 'gold']
+export const noteShareModes: NoteShareMode[] = ['private', 'read', 'edit']
 
 export function mapNoteRow(row: NoteRow): Note {
   return {
@@ -30,6 +36,8 @@ export function mapNoteRow(row: NoteRow): Note {
     body: row.body,
     color: row.color,
     pinned: row.pinned,
+    shareMode: normalizeNoteShareMode(row.share_mode),
+    shareToken: row.share_token,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -42,6 +50,10 @@ export function normalizeOwnerEmail(value: string | undefined) {
 
 export function normalizeNoteColor(value: unknown): NoteColor {
   return noteColors.includes(value as NoteColor) ? value as NoteColor : 'mint'
+}
+
+export function normalizeNoteShareMode(value: unknown): NoteShareMode {
+  return noteShareModes.includes(value as NoteShareMode) ? value as NoteShareMode : 'private'
 }
 
 export function isUuid(value: unknown) {

@@ -5,6 +5,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Clock,
+  Copy,
   FileText,
   LayoutGrid,
   LayoutList,
@@ -17,15 +18,18 @@ import {
   RotateCcw,
   Save,
   Search,
+  Share2,
   Trash2,
   Wifi,
   WifiOff,
+  X,
   toast,
   uuidv4,
 } from '@mypartner/common/dependencies'
 import { cx } from '@mypartner/common'
+import { getApiUrl } from '@mypartner/common'
 import { MarkdownPreviewEditor } from '@mypartner/markdown-editor'
-import type { LocalNote, NoteColor, SyncStatus } from '../types'
+import type { LocalNote, NoteColor, NoteShareMode, SyncStatus } from '../types'
 import { deleteNote as idbDelete, getNote, getVisibleNotes, saveNote } from '../lib/idb'
 import { pullServerNotes, syncPendingNotes } from '../lib/sync'
 
@@ -35,6 +39,7 @@ interface NotesAppProps {
 }
 
 const colorOptions: NoteColor[] = ['mint', 'sky', 'coral', 'gold']
+const shareModes: NoteShareMode[] = ['private', 'read', 'edit']
 
 const accent: Record<NoteColor, string> = {
   mint: '#36a278',
@@ -45,6 +50,12 @@ const accent: Record<NoteColor, string> = {
 
 const colorLabel: Record<NoteColor, string> = {
   mint: 'Mint', sky: 'Sky', coral: 'Coral', gold: 'Gold',
+}
+
+const shareModeLabel: Record<NoteShareMode, string> = {
+  private: 'Private',
+  read: 'Read',
+  edit: 'Edit',
 }
 
 const formatDate = (value: string) =>
@@ -144,6 +155,8 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
   const [dirtyNoteIds, setDirtyNoteIds] = useState<Set<string>>(() => new Set())
   const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set())
+  const [shareNoteId, setShareNoteId] = useState<string | null>(null)
+  const [shareBusy, setShareBusy] = useState(false)
 
   // Ref so callbacks can read current notes without being recreated on every render
   const notesRef = useRef<LocalNote[]>([])
@@ -342,6 +355,8 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       body: '',
       color: 'mint',
       pinned: false,
+      shareMode: 'private',
+      shareToken: null,
       createdAt: now,
       updatedAt: now,
       syncStatus: 'pending',
@@ -439,6 +454,73 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       })
     }
   }, [activeNoteId, discardIfEmpty, ownerEmail, refreshFromIdb, runSync])
+
+  const persistNoteForSharing = useCallback(async (note: LocalNote) => {
+    if (!noteHasContent(note)) throw new Error('Add content before sharing')
+    await saveNote(note)
+    removeUnsavedPreview(ownerEmail, note.localId)
+    setDirtyNoteIds(curr => {
+      const next = new Set(curr)
+      next.delete(note.localId)
+      return next
+    })
+    await runSync()
+    return await getNote(note.localId) ?? note
+  }, [ownerEmail, runSync])
+
+  const updateShareMode = useCallback(async (mode: NoteShareMode) => {
+    const activeShareNote = notesRef.current.find(n => n.localId === shareNoteId)
+      ?? (draftNoteRef.current?.localId === shareNoteId ? draftNoteRef.current : null)
+    if (!activeShareNote || shareBusy) return
+
+    if (!navigator.onLine) {
+      toast.error('Connect to the internet to update sharing')
+      return
+    }
+
+    setShareBusy(true)
+    try {
+      const saved = await persistNoteForSharing(activeShareNote)
+      const serverId = saved.serverId ?? saved.localId
+      const res = await fetch(getApiUrl(`/api/notes/${serverId}/share`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-user-email': ownerEmail },
+        body: JSON.stringify({ mode }),
+      })
+      if (!res.ok) throw new Error('Unable to update sharing')
+
+      const data = await res.json() as { shareMode: NoteShareMode, shareToken: string | null }
+      const updated = {
+        ...saved,
+        shareMode: data.shareMode,
+        shareToken: data.shareToken,
+        syncStatus: 'synced' as const,
+        operation: 'update' as const,
+        lastSyncedAt: new Date().toISOString(),
+      }
+      await saveNote(updated)
+      notesRef.current = notesRef.current.map(note => note.localId === updated.localId ? updated : note)
+      setNotes(curr => curr.map(note => note.localId === updated.localId ? updated : note))
+      toast.success(data.shareMode === 'private' ? 'Sharing turned off' : 'Share link ready')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update sharing')
+      void refreshFromIdb()
+    } finally {
+      setShareBusy(false)
+    }
+  }, [ownerEmail, persistNoteForSharing, refreshFromIdb, shareBusy, shareNoteId])
+
+  const copyShareLink = useCallback(async (note: LocalNote) => {
+    const token = note.shareToken
+    if (!token || note.shareMode === 'private') {
+      toast.error('Choose read or edit sharing first')
+      return
+    }
+
+    const link = `${window.location.origin}/share/notes/${token}`
+    await navigator.clipboard.writeText(link)
+    toast.success('Share link copied')
+  }, [])
 
   const discardActivePreview = useCallback(async () => {
     if (!activeNoteId) return
@@ -795,6 +877,21 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
                 </button>
               )}
 
+              {/* Share */}
+              <button
+                type="button"
+                onClick={() => setShareNoteId(activeNote.localId)}
+                title="Share note"
+                className={cx(
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors active:scale-95 cursor-pointer',
+                  activeNote.shareMode && activeNote.shareMode !== 'private'
+                    ? 'bg-forest/10 text-forest hover:bg-forest/15'
+                    : 'text-ink-3 hover:bg-forest/10 hover:text-forest',
+                )}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </button>
+
               {/* Delete */}
               <button
                 type="button"
@@ -851,7 +948,142 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
           </div>
         )}
       </section>
+
+      {shareNoteId && (
+        <ShareDialog
+          note={notes.find(note => note.localId === shareNoteId) ?? (draftNote?.localId === shareNoteId ? draftNote : null)}
+          busy={shareBusy}
+          onClose={() => setShareNoteId(null)}
+          onModeChange={updateShareMode}
+          onCopy={copyShareLink}
+        />
+      )}
     </main>
+  )
+}
+
+const shareModeDescriptions: Record<NoteShareMode, string> = {
+  private: 'Only you can access this note',
+  read: 'Anyone with the link can view',
+  edit: 'Anyone with the link can edit',
+}
+
+function ShareDialog({
+  note, busy, onClose, onModeChange, onCopy,
+}: {
+  note: LocalNote | null
+  busy: boolean
+  onClose: () => void
+  onModeChange: (mode: NoteShareMode) => void
+  onCopy: (note: LocalNote) => void
+}) {
+  const [pendingMode, setPendingMode] = useState<NoteShareMode | null>(null)
+
+  useEffect(() => {
+    if (!note) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [note, onClose])
+
+  useEffect(() => {
+    if (!busy) setPendingMode(null)
+  }, [busy])
+
+  if (!note) return null
+
+  const mode = note.shareMode ?? 'private'
+  const displayMode = pendingMode ?? mode
+  const canCopy = mode !== 'private' && Boolean(note.shareToken)
+  const link = canCopy ? `${window.location.origin}/share/notes/${note.shareToken}` : null
+
+  const handleModeChange = (next: NoteShareMode) => {
+    setPendingMode(next)
+    onModeChange(next)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border border-line bg-surface-1 shadow-xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-forest/10">
+              <Share2 className="h-4 w-4 text-forest" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-ink-1">Share note</h2>
+              <p className="truncate text-xs text-ink-3">
+                {note.body.trim().split('\n')[0].replace(/^#+\s*/, '').trim() || 'Untitled'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-ink-3 transition hover:bg-surface-2 hover:text-ink-1 cursor-pointer"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="space-y-3 px-4 py-4">
+          <div>
+            <div className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-surface-0 p-1">
+              {shareModes.map(option => (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleModeChange(option)}
+                  className={cx(
+                    'flex h-8 items-center justify-center rounded-md text-xs font-semibold transition cursor-pointer disabled:cursor-not-allowed',
+                    displayMode === option
+                      ? 'bg-forest text-white shadow-sm'
+                      : 'text-ink-2 hover:bg-surface-2',
+                  )}
+                >
+                  {busy && pendingMode === option
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : shareModeLabel[option]}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 px-0.5 text-[11px] text-ink-3">{shareModeDescriptions[displayMode]}</p>
+          </div>
+
+          {displayMode !== 'private' && (
+            <div className="flex min-h-10 items-center gap-2 rounded-lg border border-line bg-surface-0 px-3 py-2">
+              {busy ? (
+                <span className="flex flex-1 items-center gap-1.5 text-xs text-ink-3">
+                  <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                  Generating link…
+                </span>
+              ) : link ? (
+                <>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-2">{link}</span>
+                  <button
+                    type="button"
+                    onClick={() => onCopy(note)}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-forest transition hover:bg-forest/10 active:scale-95 cursor-pointer"
+                    title="Copy share link"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : (
+                <span className="flex-1 text-xs italic text-ink-3">Could not generate link — try again</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

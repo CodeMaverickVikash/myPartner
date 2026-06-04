@@ -1,6 +1,6 @@
 import { uuidv4 } from '@mypartner/common/dependencies'
 import { getApiUrl } from '@mypartner/common'
-import type { LocalNote, NoteColor } from '../types'
+import type { LocalNote, NoteColor, NoteShareMode } from '../types'
 import { deleteNote, getAllOwnerNotes, getNote, getPendingNotes, saveNote, saveNotes } from './idb'
 
 interface SyncResult {
@@ -12,6 +12,8 @@ interface SyncResult {
     body: string
     color: NoteColor
     pinned: boolean
+    shareMode?: NoteShareMode
+    shareToken?: string | null
     updatedAt: string
   }
   success?: boolean
@@ -53,6 +55,8 @@ async function syncOne(note: LocalNote, ownerEmail: string): Promise<void> {
         body: data.serverNote.body,
         color: data.serverNote.color,
         pinned: data.serverNote.pinned,
+        shareMode: data.serverNote.shareMode,
+        shareToken: data.serverNote.shareToken,
         updatedAt: data.serverNote.updatedAt,
         syncStatus: 'synced',
         operation: 'update',
@@ -137,6 +141,8 @@ export async function pullServerNotes(ownerEmail: string): Promise<void> {
       body: string
       color: NoteColor
       pinned: boolean
+      shareMode?: NoteShareMode
+      shareToken?: string | null
       createdAt: string
       updatedAt: string
     }>
@@ -160,6 +166,8 @@ export async function pullServerNotes(ownerEmail: string): Promise<void> {
         body: serverNote.body,
         color: serverNote.color,
         pinned: serverNote.pinned,
+        shareMode: serverNote.shareMode ?? 'private',
+        shareToken: serverNote.shareToken ?? null,
         createdAt: serverNote.createdAt,
         updatedAt: serverNote.updatedAt,
         syncStatus: 'synced',
@@ -176,6 +184,8 @@ export async function pullServerNotes(ownerEmail: string): Promise<void> {
       body: serverNote.body,
       color: serverNote.color,
       pinned: serverNote.pinned,
+      shareMode: serverNote.shareMode ?? 'private',
+      shareToken: serverNote.shareToken ?? null,
       createdAt: serverNote.createdAt,
       updatedAt: serverNote.updatedAt,
       syncStatus: 'synced',

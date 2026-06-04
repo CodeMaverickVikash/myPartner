@@ -1,4 +1,5 @@
 export type NoteColor = 'mint' | 'sky' | 'coral' | 'gold'
+export type NoteShareMode = 'private' | 'read' | 'edit'
 export type SyncStatus = 'pending' | 'syncing' | 'synced' | 'failed'
 export type SyncOperation = 'create' | 'update' | 'delete'
 
@@ -10,6 +11,8 @@ export interface LocalNote {
   body: string
   color: NoteColor
   pinned: boolean
+  shareMode?: NoteShareMode
+  shareToken?: string | null
   createdAt: string
   updatedAt: string
   /** Set on soft-delete; note hidden in UI until server delete succeeds */
