@@ -14,6 +14,8 @@ import {
   Pin,
   PinOff,
   Plus,
+  RotateCcw,
+  Save,
   Search,
   Trash2,
   Wifi,
@@ -24,7 +26,7 @@ import {
 import { cx } from '@mypartner/common'
 import { MarkdownPreviewEditor } from '@mypartner/markdown-editor'
 import type { LocalNote, NoteColor, SyncStatus } from '../types'
-import { deleteNote as idbDelete, getVisibleNotes, saveNote } from '../lib/idb'
+import { deleteNote as idbDelete, getNote, getVisibleNotes, saveNote } from '../lib/idb'
 import { pullServerNotes, syncPendingNotes } from '../lib/sync'
 
 interface NotesAppProps {
@@ -56,6 +58,49 @@ const stripHtml = (html: string) =>
 const noteHasContent = (note: Pick<LocalNote, 'title' | 'body'>) =>
   note.title.trim().length > 0 || note.body.trim().length > 0
 
+const unsavedPreviewKey = (ownerEmail: string) => `mypartner-notes-unsaved:${ownerEmail}`
+
+function loadUnsavedPreviews(ownerEmail: string): LocalNote[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(unsavedPreviewKey(ownerEmail))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter((note): note is LocalNote => note && typeof note.localId === 'string' && note.ownerEmail === ownerEmail)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function writeUnsavedPreviews(ownerEmail: string, previews: LocalNote[]) {
+  if (typeof localStorage === 'undefined') return
+  const key = unsavedPreviewKey(ownerEmail)
+  if (previews.length === 0) {
+    localStorage.removeItem(key)
+    return
+  }
+  localStorage.setItem(key, JSON.stringify(previews))
+}
+
+function saveUnsavedPreview(ownerEmail: string, note: LocalNote) {
+  const previews = loadUnsavedPreviews(ownerEmail).filter(preview => preview.localId !== note.localId)
+  writeUnsavedPreviews(ownerEmail, [note, ...previews])
+}
+
+function removeUnsavedPreview(ownerEmail: string, localId: string) {
+  writeUnsavedPreviews(ownerEmail, loadUnsavedPreviews(ownerEmail).filter(note => note.localId !== localId))
+}
+
+function mergeUnsavedPreviews(savedNotes: LocalNote[], previews: LocalNote[]) {
+  const previewById = new Map(previews.map(note => [note.localId, note]))
+  const merged = savedNotes.map(note => previewById.get(note.localId) ?? note)
+  const savedIds = new Set(savedNotes.map(note => note.localId))
+  const previewOnly = previews.filter(note => !savedIds.has(note.localId))
+  return [...previewOnly, ...merged]
+}
+
 function SyncBadge({ status }: { status: SyncStatus }) {
   if (status === 'synced') return null
   const config = {
@@ -67,6 +112,14 @@ function SyncBadge({ status }: { status: SyncStatus }) {
   return (
     <span className={cx('flex items-center shrink-0', className)} title={title}>
       {icon}
+    </span>
+  )
+}
+
+function UnsavedBadge() {
+  return (
+    <span className="flex items-center shrink-0 text-amber-600" title="Unsaved preview">
+      <Clock className="h-3 w-3" />
     </span>
   )
 }
@@ -89,20 +142,30 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
   const dragStartW = useRef(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
+  const [dirtyNoteIds, setDirtyNoteIds] = useState<Set<string>>(() => new Set())
+  const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(() => new Set())
 
   // Ref so callbacks can read current notes without being recreated on every render
   const notesRef = useRef<LocalNote[]>([])
   notesRef.current = notes
   const draftNoteRef = useRef<LocalNote | null>(null)
   draftNoteRef.current = draftNote
-
-  // Per-note debounce timers for the sync trigger
-  const syncTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const dirtyNoteIdsRef = useRef<Set<string>>(new Set())
+  dirtyNoteIdsRef.current = dirtyNoteIds
 
   const refreshFromIdb = useCallback(async () => {
     const fresh = await getVisibleNotes(ownerEmail)
-    setNotes(fresh)
-    return fresh
+    const dirtyIds = dirtyNoteIdsRef.current
+    const persistedPreviews = loadUnsavedPreviews(ownerEmail)
+    const memoryPreviews = notesRef.current.filter(note => dirtyIds.has(note.localId))
+    const previewById = new Map(persistedPreviews.map(note => [note.localId, note]))
+    memoryPreviews.forEach(note => previewById.set(note.localId, note))
+    const previews = Array.from(previewById.values())
+    const nextNotes = mergeUnsavedPreviews(fresh, previews)
+    notesRef.current = nextNotes
+    setNotes(nextNotes)
+    setDirtyNoteIds(new Set(previews.map(note => note.localId)))
+    return nextNotes
   }, [ownerEmail])
 
   const runSync = useCallback(async () => {
@@ -125,8 +188,12 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
 
     getVisibleNotes(ownerEmail).then(initial => {
       if (cancelled) return
-      setNotes(initial)
-      setActiveNoteId(initial[0]?.localId ?? null)
+      const previews = loadUnsavedPreviews(ownerEmail)
+      const nextNotes = mergeUnsavedPreviews(initial, previews)
+      notesRef.current = nextNotes
+      setNotes(nextNotes)
+      setDirtyNoteIds(new Set(previews.map(note => note.localId)))
+      setActiveNoteId(nextNotes[0]?.localId ?? null)
     })
 
     if (navigator.onLine && !cancelled) void runSync()
@@ -148,12 +215,6 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       window.removeEventListener('offline', handleOffline)
     }
   }, [runSync])
-
-  // Cleanup debounce timers on unmount
-  useEffect(() => {
-    const timers = syncTimers.current
-    return () => timers.forEach(t => clearTimeout(t))
-  }, [])
 
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -215,6 +276,8 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
 
   const activeNote = notes.find(n => n.localId === activeNoteId)
     ?? (draftNote?.localId === activeNoteId ? draftNote : null)
+  const activeNoteIsDirty = activeNote ? dirtyNoteIds.has(activeNote.localId) : false
+  const activeNoteIsSaving = activeNote ? savingNoteIds.has(activeNote.localId) : false
 
   const discardIfEmpty = useCallback((localId: string) => {
     const draft = draftNoteRef.current
@@ -222,6 +285,12 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       if (!noteHasContent(draft)) {
         draftNoteRef.current = null
         setDraftNote(null)
+        removeUnsavedPreview(ownerEmail, localId)
+        setDirtyNoteIds(curr => {
+          const next = new Set(curr)
+          next.delete(localId)
+          return next
+        })
       }
       return
     }
@@ -231,9 +300,12 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
 
     notesRef.current = notesRef.current.filter(n => n.localId !== localId)
     setNotes(curr => curr.filter(n => n.localId !== localId))
-    const timer = syncTimers.current.get(localId)
-    if (timer) clearTimeout(timer)
-    syncTimers.current.delete(localId)
+    removeUnsavedPreview(ownerEmail, localId)
+    setDirtyNoteIds(curr => {
+      const next = new Set(curr)
+      next.delete(localId)
+      return next
+    })
 
     if (!note.serverId) {
       void idbDelete(localId).catch(() => undefined)
@@ -251,7 +323,7 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
         toast.error('Could not remove empty note')
         void refreshFromIdb()
       })
-  }, [refreshFromIdb, runSync])
+  }, [ownerEmail, refreshFromIdb, runSync])
 
   const selectNote = useCallback((localId: string) => {
     if (activeNoteId && activeNoteId !== localId) discardIfEmpty(activeNoteId)
@@ -306,14 +378,19 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       if (isDraft) {
         draftNoteRef.current = updated
         setDraftNote(updated)
+        removeUnsavedPreview(ownerEmail, localId)
+        setDirtyNoteIds(curr => {
+          const next = new Set(curr)
+          next.delete(localId)
+          return next
+        })
       } else {
         const nextNotes = notesRef.current.map(n => n.localId === localId ? updated : n)
         notesRef.current = nextNotes
         setNotes(nextNotes)
+        saveUnsavedPreview(ownerEmail, updated)
+        setDirtyNoteIds(curr => new Set(curr).add(localId))
       }
-      const timer = syncTimers.current.get(localId)
-      if (timer) clearTimeout(timer)
-      syncTimers.current.delete(localId)
       return
     }
 
@@ -327,19 +404,78 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       setNotes(curr => curr.map(n => n.localId === localId ? updated : n))
     }
 
-    void saveNote(updated).catch(() => {
-      toast.error('Could not save note locally')
+    saveUnsavedPreview(ownerEmail, updated)
+    setDirtyNoteIds(curr => new Set(curr).add(localId))
+  }, [ownerEmail])
+
+  const saveActiveNote = useCallback(async () => {
+    const note = notesRef.current.find(n => n.localId === activeNoteId)
+      ?? (draftNoteRef.current?.localId === activeNoteId ? draftNoteRef.current : null)
+    if (!note || !noteHasContent(note)) {
+      if (activeNoteId) discardIfEmpty(activeNoteId)
+      return
+    }
+
+    const localId = note.localId
+    setSavingNoteIds(curr => new Set(curr).add(localId))
+    try {
+      await saveNote(note)
+      removeUnsavedPreview(ownerEmail, localId)
+      setDirtyNoteIds(curr => {
+        const next = new Set(curr)
+        next.delete(localId)
+        return next
+      })
+      if (navigator.onLine) await runSync()
+      toast.success('Note saved')
+    } catch {
+      toast.error('Could not save note')
       void refreshFromIdb()
+    } finally {
+      setSavingNoteIds(curr => {
+        const next = new Set(curr)
+        next.delete(localId)
+        return next
+      })
+    }
+  }, [activeNoteId, discardIfEmpty, ownerEmail, refreshFromIdb, runSync])
+
+  const discardActivePreview = useCallback(async () => {
+    if (!activeNoteId) return
+
+    const localId = activeNoteId
+    removeUnsavedPreview(ownerEmail, localId)
+    setDirtyNoteIds(curr => {
+      const next = new Set(curr)
+      next.delete(localId)
+      return next
     })
 
-    // Debounce the network sync so rapid keystrokes don't flood the server
-    const timer = syncTimers.current.get(localId)
-    if (timer) clearTimeout(timer)
-    syncTimers.current.set(localId, setTimeout(() => {
-      syncTimers.current.delete(localId)
-      void runSync()
-    }, 1500))
-  }, [refreshFromIdb, runSync])
+    const saved = await getNote(localId).catch(() => undefined)
+    if (saved && !saved.deletedAt) {
+      const nextNotes = notesRef.current.some(note => note.localId === localId)
+        ? notesRef.current.map(note => note.localId === localId ? saved : note)
+        : [saved, ...notesRef.current]
+      notesRef.current = nextNotes
+      setNotes(nextNotes)
+      if (draftNoteRef.current?.localId === localId) {
+        draftNoteRef.current = null
+        setDraftNote(null)
+      }
+      toast.success('Preview changes discarded')
+      return
+    }
+
+    const nextNotes = notesRef.current.filter(note => note.localId !== localId)
+    notesRef.current = nextNotes
+    setNotes(nextNotes)
+    if (draftNoteRef.current?.localId === localId) {
+      draftNoteRef.current = null
+      setDraftNote(null)
+    }
+    setActiveNoteId(nextNotes[0]?.localId ?? null)
+    toast.success('Preview changes discarded')
+  }, [activeNoteId, ownerEmail])
 
   const handleDelete = useCallback(async () => {
     const note = notesRef.current.find(n => n.localId === activeNoteId)
@@ -349,6 +485,12 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
     const localId = note.localId
     if (draftNoteRef.current?.localId === localId) {
       setDraftNote(null)
+      removeUnsavedPreview(ownerEmail, localId)
+      setDirtyNoteIds(curr => {
+        const next = new Set(curr)
+        next.delete(localId)
+        return next
+      })
       setActiveNoteId(notesRef.current[0]?.localId ?? null)
       return
     }
@@ -357,6 +499,12 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
     setNotes(curr => {
       const next = curr.filter(n => n.localId !== localId)
       setActiveNoteId(next[0]?.localId ?? null)
+      return next
+    })
+    removeUnsavedPreview(ownerEmail, localId)
+    setDirtyNoteIds(curr => {
+      const next = new Set(curr)
+      next.delete(localId)
       return next
     })
 
@@ -377,8 +525,9 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
       })
       void runSync()
     }
-  }, [activeNoteId, refreshFromIdb, runSync])
+  }, [activeNoteId, ownerEmail, refreshFromIdb, runSync])
 
+  const unsavedCount = dirtyNoteIds.size
   const pendingCount = notes.filter(n => n.syncStatus === 'pending' || n.syncStatus === 'syncing').length
   const failedCount = notes.filter(n => n.syncStatus === 'failed').length
 
@@ -386,6 +535,8 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
     ? 'offline'
     : isSyncing
       ? 'syncing...'
+      : unsavedCount > 0
+        ? `${unsavedCount} unsaved`
       : failedCount > 0
         ? `${failedCount} failed`
         : pendingCount > 0
@@ -489,6 +640,7 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
                   key={note.localId}
                   note={note}
                   active={note.localId === activeNoteId}
+                  dirty={dirtyNoteIds.has(note.localId)}
                   onClick={() => selectNote(note.localId)}
                 />
               ))}
@@ -503,6 +655,7 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
                       key={note.localId}
                       note={note}
                       active={note.localId === activeNoteId}
+                      dirty={dirtyNoteIds.has(note.localId)}
                       onClick={() => selectNote(note.localId)}
                     />
                   ))}
@@ -518,6 +671,7 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
                       key={note.localId}
                       note={note}
                       active={note.localId === activeNoteId}
+                      dirty={dirtyNoteIds.has(note.localId)}
                       onClick={() => selectNote(note.localId)}
                     />
                   ))}
@@ -609,6 +763,38 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
                 {activeNote.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
               </button>
 
+              {/* Save */}
+              <button
+                type="button"
+                onClick={saveActiveNote}
+                disabled={!activeNoteIsDirty || activeNoteIsSaving}
+                title={activeNoteIsDirty ? 'Save note' : 'No unsaved changes'}
+                className={cx(
+                  'flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-xs font-medium transition-colors active:scale-95',
+                  activeNoteIsDirty
+                    ? 'bg-forest text-white hover:bg-forest-strong cursor-pointer'
+                    : 'bg-surface-0 text-ink-3 cursor-not-allowed opacity-70',
+                )}
+              >
+                {activeNoteIsSaving
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Save className="h-3.5 w-3.5" />}
+                <span>Save</span>
+              </button>
+
+              {activeNoteIsDirty && (
+                <button
+                  type="button"
+                  onClick={discardActivePreview}
+                  disabled={activeNoteIsSaving}
+                  title="Discard preview changes"
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded border border-line bg-surface-0 px-2 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-1 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Discard</span>
+                </button>
+              )}
+
               {/* Delete */}
               <button
                 type="button"
@@ -620,7 +806,8 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
               </button>
 
               <div className="ml-auto flex items-center gap-2 shrink-0">
-                <SyncBadge status={activeNote.syncStatus} />
+                {activeNoteIsDirty && <span className="text-[11px] font-medium text-amber-600">Unsaved</span>}
+                {activeNoteIsDirty ? <UnsavedBadge /> : <SyncBadge status={activeNote.syncStatus} />}
                 <span className="text-[11px] text-ink-3">{formatDate(activeNote.updatedAt)}</span>
               </div>
             </div>
@@ -669,10 +856,11 @@ export default function NotesApp({ ownerEmail, onNavigate }: NotesAppProps) {
 }
 
 function NoteThumb({
-  note, active, onClick,
+  note, active, dirty, onClick,
 }: {
   note: LocalNote
   active: boolean
+  dirty: boolean
   onClick: () => void
 }) {
   return (
@@ -696,6 +884,7 @@ function NoteThumb({
           <span className="flex-1 truncate text-[13px] font-semibold leading-snug text-ink-1">
             {note.body.trim().split('\n')[0].replace(/^#+\s*/, '').trim() || 'Untitled'}
           </span>
+          {dirty && <UnsavedBadge />}
           {note.pinned && <Pin className="h-3 w-3 shrink-0 text-forest mt-0.5" />}
         </div>
         <p className="line-clamp-3 text-[11px] leading-relaxed text-ink-3 flex-1">
@@ -708,10 +897,11 @@ function NoteThumb({
 }
 
 function NoteCard({
-  note, active, onClick,
+  note, active, dirty, onClick,
 }: {
   note: LocalNote
   active: boolean
+  dirty: boolean
   onClick: () => void
 }) {
   return (
@@ -735,8 +925,9 @@ function NoteCard({
             <span className="flex-1 truncate text-sm font-semibold text-ink-1">
               {note.body.trim().split('\n')[0].replace(/^#+\s*/, '').trim() || 'Untitled'}
             </span>
+            {dirty && <UnsavedBadge />}
             {note.pinned && <Pin className="h-3 w-3 shrink-0 text-forest" />}
-            <SyncBadge status={note.syncStatus} />
+            {!dirty && <SyncBadge status={note.syncStatus} />}
           </div>
           <p className="truncate text-xs text-ink-3 leading-snug">
             {stripHtml(note.body) || 'No content'}
