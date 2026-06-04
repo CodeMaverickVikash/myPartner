@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'myPartner Portal',
+  title: 'myPartner ' + process.env.APP_MODE,
   description: 'Markdown editor and notes workspace, offline-first and local-only.',
   manifest: '/manifest.webmanifest',
   icons: {
