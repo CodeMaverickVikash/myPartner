@@ -6,6 +6,7 @@ import {
   Code,
   Code2,
   ChevronDown,
+  Columns3,
   Copy,
   Ellipsis,
   Eye,
@@ -16,6 +17,7 @@ import {
   Minus,
   Quote,
   Redo2,
+  Rows3,
   SquareCheck,
   Strikethrough,
   Table2,
@@ -46,6 +48,90 @@ interface ImageOverlayRect {
   top: number
   width: number
   height: number
+}
+
+interface TableSelection {
+  tableTop: number
+  tableLeft: number
+  tableWidth: number
+  rowIndex: number
+  colIndex: number
+}
+
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function isImageUrl(value: string) {
+  return /^(https?:\/\/|data:image\/|blob:).+\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(value) ||
+    /^data:image\//i.test(value) ||
+    /^blob:/i.test(value)
+}
+
+function imageToMarkdown(img: HTMLImageElement) {
+  const src = img.getAttribute('src') ?? ''
+  const alt = img.getAttribute('alt') ?? ''
+  const width = img.getAttribute('width') || img.style.width.replace('px', '')
+  if (width) return `<img src="${src}" alt="${alt}" width="${width}" />`
+  return `![${alt}](${src})`
+}
+
+function imageToHtml(src: string, alt = '', width?: string) {
+  const widthAttr = width ? ` width="${escapeHtmlAttribute(width)}"` : ''
+  return `<img src="${escapeHtmlAttribute(src)}" alt="${escapeHtmlAttribute(alt)}"${widthAttr} style="max-width:100%" />`
+}
+
+function createImageElement(src: string, alt = '', width?: string) {
+  const img = document.createElement('img')
+  img.src = src
+  img.alt = alt
+  img.style.maxWidth = '100%'
+  if (width) img.setAttribute('width', width)
+  return img
+}
+
+function extractImagesFromHtml(html: string) {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  return Array.from(template.content.querySelectorAll('img'))
+    .map(img => ({
+      src: img.getAttribute('src') ?? '',
+      alt: img.getAttribute('alt') ?? '',
+      width: img.getAttribute('width') ?? ''
+    }))
+    .filter(image => image.src)
+}
+
+function extractMarkdownImages(text: string) {
+  const images: Array<{ src: string; alt: string; width?: string }> = []
+  const markdownImagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+  const htmlImagePattern = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = markdownImagePattern.exec(text))) {
+    images.push({ alt: match[1] ?? '', src: match[2] ?? '' })
+  }
+
+  while ((match = htmlImagePattern.exec(text))) {
+    const html = match[0]
+    const alt = html.match(/\balt=["']([^"']*)["']/i)?.[1] ?? ''
+    const width = html.match(/\bwidth=["']([^"']*)["']/i)?.[1]
+    images.push({ alt, src: match[1] ?? '', width })
+  }
+
+  return images.filter(image => image.src)
+}
+
+function containsOnlyImagesAsText(text: string) {
+  return text
+    .trim()
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '')
+    .replace(/<img\b[^>]*>/gi, '')
+    .trim().length === 0
 }
 
 const blockTags = new Set([
@@ -81,6 +167,62 @@ function escapeTableCell(value: string) {
   return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
 }
 
+function getStyleAttribute(styles: Array<[string, string | null | undefined]>) {
+  const value = styles
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([name, styleValue]) => `${name}: ${styleValue}`)
+    .join('; ')
+
+  return value ? ` style="${escapeHtmlAttribute(value)}"` : ''
+}
+
+function tableHasCustomLayout(table: HTMLTableElement) {
+  if (table.style.width) return true
+  return Array.from(table.querySelectorAll('tr, th, td')).some(element => {
+    const htmlElement = element as HTMLElement
+    return Boolean(htmlElement.style.width || htmlElement.style.minWidth || htmlElement.style.height)
+  })
+}
+
+function serializeHtmlTableCell(cell: HTMLTableCellElement) {
+  const tag = cell.tagName.toLowerCase()
+  const style = getStyleAttribute([
+    ['width', cell.style.width],
+    ['min-width', cell.style.minWidth],
+    ['height', cell.style.height]
+  ])
+
+  return `<${tag}${style}>${cell.innerHTML}</${tag}>`
+}
+
+function serializeHtmlTableRow(row: HTMLTableRowElement) {
+  const style = getStyleAttribute([['height', row.style.height]])
+  return `<tr${style}>${Array.from(row.cells).map(serializeHtmlTableCell).join('')}</tr>`
+}
+
+function serializeHtmlTable(table: HTMLTableElement) {
+  const sections: string[] = []
+  const tableStyle = getStyleAttribute([['width', table.style.width]])
+
+  if (table.tHead) {
+    sections.push(`<thead>${Array.from(table.tHead.rows).map(serializeHtmlTableRow).join('')}</thead>`)
+  }
+
+  Array.from(table.tBodies).forEach(section => {
+    sections.push(`<tbody>${Array.from(section.rows).map(serializeHtmlTableRow).join('')}</tbody>`)
+  })
+
+  if (table.tFoot) {
+    sections.push(`<tfoot>${Array.from(table.tFoot.rows).map(serializeHtmlTableRow).join('')}</tfoot>`)
+  }
+
+  const rowsWithoutSection = Array.from(table.children)
+    .filter((child): child is HTMLTableRowElement => child instanceof HTMLTableRowElement)
+  const looseRows = rowsWithoutSection.map(serializeHtmlTableRow).join('')
+
+  return `\n\n<table${tableStyle}>\n${sections.join('\n')}${looseRows ? `\n${looseRows}` : ''}\n</table>\n\n`
+}
+
 function serializeChildren(element: Element): string {
   return Array.from(element.childNodes).map(serializeNode).join('')
 }
@@ -103,6 +245,8 @@ function serializeListItem(element: HTMLElement, marker: string) {
 }
 
 function serializeTable(table: HTMLTableElement) {
+  if (tableHasCustomLayout(table)) return serializeHtmlTable(table)
+
   const rows = Array.from(table.querySelectorAll('tr'))
     .map(row => Array.from(row.children).map(cell => escapeTableCell(cell.textContent ?? '')))
     .filter(cells => cells.length > 0)
@@ -212,6 +356,7 @@ function serializeNode(node: Node): string {
     }
     default: {
       const body = serializeChildren(node)
+      if (node.classList.contains('table-scroll-wrapper')) return body
       return blockTags.has(tag) ? `\n${body}\n` : body
     }
   }
@@ -237,6 +382,16 @@ function isImageOnlyParagraph(paragraph: HTMLParagraphElement) {
   })
 }
 
+function decorateTables(container: HTMLElement) {
+  Array.from(container.querySelectorAll<HTMLTableElement>('table')).forEach(table => {
+    if (table.parentElement?.classList.contains('table-scroll-wrapper')) return
+    const wrapper = document.createElement('div')
+    wrapper.className = 'table-scroll-wrapper'
+    table.before(wrapper)
+    wrapper.append(table)
+  })
+}
+
 function decorateImageRows(container: HTMLElement) {
   const paragraphs = Array.from(container.querySelectorAll('p'))
 
@@ -247,7 +402,6 @@ function decorateImageRows(container: HTMLElement) {
   for (const paragraph of Array.from(container.querySelectorAll<HTMLParagraphElement>('p.image-row'))) {
     let next = paragraph.nextElementSibling
     while (next instanceof HTMLParagraphElement && next.classList.contains('image-row')) {
-      paragraph.append(document.createTextNode('\n'))
       Array.from(next.childNodes).forEach(child => paragraph.append(child))
       const stale = next
       next = next.nextElementSibling
@@ -273,12 +427,15 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [deletePos, setDeletePos] = useState<{ x: number; y: number } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [imageCopied, setImageCopied] = useState(false)
 
   const selectedImgRef = useRef<HTMLImageElement | null>(null)
   const imageOverlayRef = useRef<HTMLDivElement | null>(null)
   const overlayToolbarRef = useRef<HTMLDivElement | null>(null)
   const [imgOverlay, setImgOverlay] = useState<ImageOverlayRect | null>(null)
   const resizingRef = useRef(false)
+  const colResizingRef = useRef(false)
+  const rowResizingRef = useRef(false)
   const movingImgRef = useRef(false)
   const moveStartX = useRef(0)
   const moveStartY = useRef(0)
@@ -294,6 +451,9 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   const resizeStartX = useRef(0)
   const resizeStartW = useRef(0)
   const [resizeWidth, setResizeWidth] = useState<number | null>(null)
+  const selectedCellRef = useRef<HTMLTableCellElement | null>(null)
+  const tableToolbarRef = useRef<HTMLDivElement | null>(null)
+  const [tableSelection, setTableSelection] = useState<TableSelection | null>(null)
 
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null)
 
@@ -325,7 +485,14 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     setImgOverlay(null)
   }
 
+  const clearTableSelection = () => {
+    if (selectedCellRef.current) selectedCellRef.current.classList.remove('table-cell-selected')
+    selectedCellRef.current = null
+    setTableSelection(null)
+  }
+
   const selectImage = (img: HTMLImageElement) => {
+    clearTableSelection()
     if (selectedImgRef.current && selectedImgRef.current !== img) {
       selectedImgRef.current.style.cursor = ''
     }
@@ -334,6 +501,288 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     window.getSelection()?.removeAllRanges()
     setDeletePos(null)
     setImgOverlay(getVisibleImageRect(img))
+  }
+
+  const getCellColumnIndex = (cell: HTMLTableCellElement) => {
+    return Array.from(cell.parentElement?.children ?? []).indexOf(cell)
+  }
+
+  const getCellRowIndex = (cell: HTMLTableCellElement) => {
+    const table = cell.closest('table')
+    const row = cell.parentElement
+    if (!table || !(row instanceof HTMLTableRowElement)) return -1
+    return Array.from(table.rows).indexOf(row)
+  }
+
+  const getCellFromSelection = () => {
+    const viewer = markdownViewerRef.current
+    const selection = window.getSelection()
+    if (!viewer || !selection || !selection.rangeCount) return null
+
+    const node = selection.getRangeAt(0).commonAncestorContainer
+    const element = node instanceof Element ? node : node.parentElement
+    const cell = element?.closest('th, td')
+    return cell instanceof HTMLTableCellElement && viewer.contains(cell) ? cell : null
+  }
+
+  const selectTableCell = (cell: HTMLTableCellElement | null) => {
+    if (!cell) {
+      clearTableSelection()
+      return
+    }
+
+    if (selectedCellRef.current && selectedCellRef.current !== cell) {
+      selectedCellRef.current.classList.remove('table-cell-selected')
+    }
+
+    selectedCellRef.current = cell
+    selectedCellRef.current.classList.add('table-cell-selected')
+    clearImageSelection()
+
+    const table = cell.closest('table')
+    const container = (table?.closest('.table-scroll-wrapper') ?? table) as HTMLElement | null
+    const containerRect = (container ?? cell).getBoundingClientRect()
+    setTableSelection({
+      tableTop: containerRect.top,
+      tableLeft: containerRect.left,
+      tableWidth: containerRect.width,
+      rowIndex: getCellRowIndex(cell),
+      colIndex: getCellColumnIndex(cell)
+    })
+  }
+
+  const updateSelectedTableCell = () => {
+    selectTableCell(getCellFromSelection())
+  }
+
+  const createTableCell = (tagName: 'td' | 'th', text = '') => {
+    const cell = document.createElement(tagName)
+    cell.textContent = text || '\u00A0'
+    return cell
+  }
+
+  const createTable = () => {
+    const table = document.createElement('table')
+    const thead = document.createElement('thead')
+    const headerRow = document.createElement('tr')
+    ;['Header 1', 'Header 2', 'Header 3'].forEach(text => headerRow.append(createTableCell('th', text)))
+    thead.append(headerRow)
+
+    const tbody = document.createElement('tbody')
+    ;[
+      ['Cell 1', 'Cell 2', 'Cell 3'],
+      ['Cell 4', 'Cell 5', 'Cell 6']
+    ].forEach(row => {
+      const tr = document.createElement('tr')
+      row.forEach(text => tr.append(createTableCell('td', text)))
+      tbody.append(tr)
+    })
+
+    table.append(thead, tbody)
+    return table
+  }
+
+  const getSelectedTableContext = () => {
+    const cell = selectedCellRef.current ?? getCellFromSelection()
+    const row = cell?.parentElement
+    const table = cell?.closest('table')
+    if (!cell || !(row instanceof HTMLTableRowElement) || !(table instanceof HTMLTableElement)) return null
+    return { cell, row, table, colIndex: getCellColumnIndex(cell) }
+  }
+
+  const finishTableEdit = (cellToSelect?: HTMLTableCellElement | null) => {
+    syncContent()
+    const nextCell = cellToSelect ?? selectedCellRef.current
+    if (nextCell?.isConnected) {
+      const range = document.createRange()
+      range.selectNodeContents(nextCell)
+      range.collapse(false)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      saveSelection()
+      selectTableCell(nextCell)
+    } else {
+      clearTableSelection()
+    }
+  }
+
+  const insertTableRow = (position: 'before' | 'after') => {
+    const context = getSelectedTableContext()
+    if (!context) return
+
+    const { row, colIndex } = context
+    const section = row.parentElement
+    const cellTag = section?.tagName === 'THEAD' ? 'th' : 'td'
+    const newRow = document.createElement('tr')
+    Array.from(row.cells).forEach(cell => {
+      const newCell = createTableCell(cellTag.toLowerCase() as 'td' | 'th')
+      newCell.style.width = (cell as HTMLElement).style.width
+      newCell.style.minWidth = (cell as HTMLElement).style.minWidth
+      newRow.append(newCell)
+    })
+
+    row[position === 'before' ? 'before' : 'after'](newRow)
+    finishTableEdit(newRow.cells[Math.max(0, colIndex)] as HTMLTableCellElement | undefined)
+  }
+
+  const insertTableColumn = (position: 'before' | 'after') => {
+    const context = getSelectedTableContext()
+    if (!context) return
+
+    const { table, colIndex } = context
+    const insertIndex = position === 'before' ? colIndex : colIndex + 1
+    let selectedCell: HTMLTableCellElement | null = null
+
+    Array.from(table.rows).forEach(row => {
+      const referenceCell = row.cells[insertIndex] ?? null
+      const cellTag = row.parentElement?.tagName === 'THEAD' ? 'th' : 'td'
+      const newCell = createTableCell(cellTag.toLowerCase() as 'td' | 'th')
+      if (referenceCell) {
+        row.insertBefore(newCell, referenceCell)
+      } else {
+        row.append(newCell)
+      }
+      if (row === context.row) selectedCell = newCell
+    })
+
+    finishTableEdit(selectedCell)
+  }
+
+  const deleteTableRow = () => {
+    const context = getSelectedTableContext()
+    if (!context) return
+
+    const { row, table, colIndex } = context
+    if (table.rows.length <= 1) {
+      table.remove()
+      syncContent()
+      clearTableSelection()
+      return
+    }
+
+    const nextRow = row.nextElementSibling instanceof HTMLTableRowElement
+      ? row.nextElementSibling
+      : row.previousElementSibling instanceof HTMLTableRowElement
+        ? row.previousElementSibling
+        : null
+    row.remove()
+    finishTableEdit(nextRow?.cells[Math.min(colIndex, (nextRow?.cells.length ?? 1) - 1)] as HTMLTableCellElement | undefined)
+  }
+
+  const deleteTableColumn = () => {
+    const context = getSelectedTableContext()
+    if (!context) return
+
+    const { table, colIndex, row } = context
+    const maxColumns = Math.max(...Array.from(table.rows).map(tableRow => tableRow.cells.length))
+    if (maxColumns <= 1) {
+      table.remove()
+      syncContent()
+      clearTableSelection()
+      return
+    }
+
+    Array.from(table.rows).forEach(tableRow => tableRow.cells[colIndex]?.remove())
+    finishTableEdit(row.cells[Math.min(colIndex, row.cells.length - 1)] as HTMLTableCellElement | undefined)
+  }
+
+  const deleteTable = () => {
+    const context = getSelectedTableContext()
+    if (!context) return
+    const wrapper = context.table.closest<HTMLElement>('.table-scroll-wrapper')
+    ;(wrapper ?? context.table).remove()
+    syncContent()
+    clearTableSelection()
+  }
+
+  const startColumnDragResize = (e: React.PointerEvent, cell: HTMLTableCellElement) => {
+    const table = cell.closest('table')
+    if (!(table instanceof HTMLTableElement)) return
+
+    e.preventDefault()
+    const colIndex = getCellColumnIndex(cell)
+    const startX = e.clientX
+    const startWidths = Array.from(table.rows).map(row => {
+      const c = row.cells[colIndex]
+      return c ? c.getBoundingClientRect().width : 0
+    })
+
+    colResizingRef.current = true
+    const viewer = markdownViewerRef.current
+    if (viewer) viewer.style.cursor = 'col-resize'
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = ev.clientX - startX
+      table.style.width = 'auto'
+      Array.from(table.rows).forEach((row, i) => {
+        const c = row.cells[colIndex] as HTMLElement | undefined
+        if (!c) return
+        const newWidth = Math.max(40, (startWidths[i] ?? 40) + delta)
+        c.style.width = `${newWidth}px`
+        c.style.minWidth = `${newWidth}px`
+      })
+    }
+
+    const onUp = () => {
+      colResizingRef.current = false
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      if (markdownViewerRef.current) markdownViewerRef.current.style.cursor = ''
+      syncContent()
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }
+
+  const startRowDragResize = (e: React.PointerEvent, cell: HTMLTableCellElement) => {
+    const row = cell.parentElement
+    if (!(row instanceof HTMLTableRowElement)) return
+
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = row.getBoundingClientRect().height
+
+    rowResizingRef.current = true
+    const viewer = markdownViewerRef.current
+    if (viewer) viewer.style.cursor = 'row-resize'
+
+    const onMove = (ev: PointerEvent) => {
+      const newHeight = Math.max(28, startHeight + (ev.clientY - startY))
+      row.style.height = `${newHeight}px`
+      Array.from(row.cells).forEach(c => { (c as HTMLElement).style.height = `${newHeight}px` })
+    }
+
+    const onUp = () => {
+      rowResizingRef.current = false
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      if (markdownViewerRef.current) markdownViewerRef.current.style.cursor = ''
+      syncContent()
+    }
+
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }
+
+  const handleViewerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (colResizingRef.current || rowResizingRef.current) return
+    const cell = (e.target as Element).closest?.('th, td')
+    const viewer = markdownViewerRef.current
+    if (!viewer) return
+    if (cell instanceof HTMLTableCellElement) {
+      const rect = cell.getBoundingClientRect()
+      if (e.clientX >= rect.right - 8) {
+        viewer.style.cursor = 'col-resize'
+      } else if (e.clientY >= rect.bottom - 8) {
+        viewer.style.cursor = 'row-resize'
+      } else {
+        viewer.style.cursor = ''
+      }
+    } else {
+      viewer.style.cursor = ''
+    }
   }
 
   const getCaretRangeFromPoint = (x: number, y: number) => {
@@ -453,9 +902,19 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
       const viewer = markdownViewerRef.current
       const sel = window.getSelection()
       if (selectedImgRef.current) { setDeletePos(null); return }
-      if (!viewer || !sel || sel.isCollapsed || !sel.rangeCount) { setDeletePos(null); return }
+      if (tableToolbarRef.current?.contains(document.activeElement)) { setDeletePos(null); return }
+      if (!viewer || !sel || !sel.rangeCount) { setDeletePos(null); clearTableSelection(); return }
       const range = sel.getRangeAt(0)
-      if (!viewer.contains(range.commonAncestorContainer)) { setDeletePos(null); return }
+      if (!viewer.contains(range.commonAncestorContainer)) { setDeletePos(null); clearTableSelection(); return }
+      const cell = getCellFromSelection()
+      if (cell) {
+        savedRange.current = range.cloneRange()
+        setDeletePos(null)
+        selectTableCell(cell)
+        return
+      }
+      clearTableSelection()
+      if (sel.isCollapsed) { setDeletePos(null); return }
       savedRange.current = range.cloneRange()
       const rect = range.getBoundingClientRect()
       setDeletePos({ x: rect.left + rect.width / 2, y: rect.top })
@@ -488,6 +947,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     internalMarkdown.current = content
     viewer.innerHTML = parseMarkdown(content)
     decorateImageRows(viewer)
+    decorateTables(viewer)
 
     const headings = viewer.querySelectorAll('h1, h2, h3, h4, h5, h6')
     headings.forEach(heading => {
@@ -501,6 +961,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
 
     viewer.innerHTML = parseMarkdown(content)
     decorateImageRows(viewer)
+    decorateTables(viewer)
     internalMarkdown.current = content
   }, [content, markdownViewerRef])
 
@@ -550,6 +1011,7 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     if (!viewer || !onContentChange) return
 
     decorateImageRows(viewer)
+    decorateTables(viewer)
     const nextMarkdown = htmlToMarkdown(viewer)
     internalMarkdown.current = nextMarkdown
     onContentChange(nextMarkdown)
@@ -564,6 +1026,89 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
 
   const insertHtml = (html: string) => {
     runCommand('insertHTML', html)
+  }
+
+  const insertImages = (images: Array<{ src: string; alt?: string; width?: string }>) => {
+    if (images.length === 0) return
+
+    restoreSelection()
+    const viewer = markdownViewerRef.current
+    const selection = window.getSelection()
+    if (!viewer || !selection) return
+
+    let range = selection.rangeCount ? selection.getRangeAt(0) : null
+    if (!range || !viewer.contains(range.commonAncestorContainer)) {
+      range = document.createRange()
+      range.selectNodeContents(viewer)
+      range.collapse(false)
+    }
+
+    range.deleteContents()
+
+    const selectedRow = range.startContainer instanceof Element
+      ? range.startContainer.closest('p.image-row')
+      : range.startContainer.parentElement?.closest('p.image-row')
+    const imageRow = selectedRow instanceof HTMLParagraphElement && viewer.contains(selectedRow)
+      ? selectedRow
+      : document.createElement('p')
+
+    imageRow.classList.add('image-row')
+
+    const fragment = document.createDocumentFragment()
+    const insertedImages = images.map(image => createImageElement(image.src, image.alt ?? '', image.width))
+    insertedImages.forEach(image => fragment.append(image))
+
+    if (imageRow.parentElement) {
+      range.insertNode(fragment)
+    } else {
+      imageRow.append(fragment)
+      range.insertNode(imageRow)
+    }
+
+    decorateImageRows(viewer)
+
+    const nextRange = document.createRange()
+    const lastInsertedImage = insertedImages.at(-1)
+    if (lastInsertedImage?.isConnected) {
+      nextRange.setStartAfter(lastInsertedImage)
+    } else {
+      nextRange.selectNodeContents(viewer)
+      nextRange.collapse(false)
+    }
+    nextRange.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(nextRange)
+    saveSelection()
+    syncContent()
+  }
+
+  const writeImageToClipboard = async (img: HTMLImageElement) => {
+    const markdown = imageToMarkdown(img)
+    const html = imageToHtml(
+      img.getAttribute('src') ?? '',
+      img.getAttribute('alt') ?? '',
+      img.getAttribute('width') || img.style.width.replace('px', '') || undefined
+    )
+
+    if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([markdown], { type: 'text/plain' })
+        })
+      ])
+    } else {
+      await navigator.clipboard.writeText(markdown)
+    }
+
+    setImageCopied(true)
+    setTimeout(() => setImageCopied(false), 2000)
+  }
+
+  const handleCopySelectedImage = async () => {
+    const img = selectedImgRef.current
+    if (!img) return
+    await writeImageToClipboard(img)
   }
 
   const wrapSelectionWithCode = () => {
@@ -607,15 +1152,36 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
   }
 
   const insertTable = () => {
-    insertHtml(`
-      <table>
-        <thead><tr><th>Header 1</th><th>Header 2</th><th>Header 3</th></tr></thead>
-        <tbody>
-          <tr><td>Cell 1</td><td>Cell 2</td><td>Cell 3</td></tr>
-          <tr><td>Cell 4</td><td>Cell 5</td><td>Cell 6</td></tr>
-        </tbody>
-      </table>
-    `)
+    restoreSelection()
+    const viewer = markdownViewerRef.current
+    const selection = window.getSelection()
+    if (!viewer || !selection) return
+
+    let range = selection.rangeCount ? selection.getRangeAt(0) : null
+    if (!range || !viewer.contains(range.commonAncestorContainer)) {
+      range = document.createRange()
+      range.selectNodeContents(viewer)
+      range.collapse(false)
+    }
+
+    const table = createTable()
+    const afterTable = document.createElement('p')
+    afterTable.append(document.createElement('br'))
+    range.deleteContents()
+    range.insertNode(afterTable)
+    range.insertNode(table)
+
+    const firstCell = table.querySelector('th, td')
+    if (firstCell instanceof HTMLTableCellElement) {
+      const cellRange = document.createRange()
+      cellRange.selectNodeContents(firstCell)
+      selection.removeAllRanges()
+      selection.addRange(cellRange)
+      saveSelection()
+      selectTableCell(firstCell)
+    }
+
+    syncContent()
   }
 
   const insertTaskList = () => {
@@ -884,6 +1450,21 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
     }
   }, [imgOverlay, markdownViewerRef])
 
+  useEffect(() => {
+    if (!tableSelection) return
+    const viewer = markdownViewerRef.current
+    const updateTableToolbar = () => {
+      const cell = selectedCellRef.current
+      if (cell?.isConnected) selectTableCell(cell)
+    }
+    viewer?.addEventListener('scroll', updateTableToolbar)
+    window.addEventListener('resize', updateTableToolbar)
+    return () => {
+      viewer?.removeEventListener('scroll', updateTableToolbar)
+      window.removeEventListener('resize', updateTableToolbar)
+    }
+  }, [tableSelection, markdownViewerRef])
+
   const handleCopyMarkdown = async () => {
     await navigator.clipboard.writeText(internalMarkdown.current)
     setCopied(true)
@@ -982,11 +1563,24 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         onInput={syncContent}
         onBlur={syncContent}
         onFocus={saveSelection}
-        onMouseUp={saveSelection}
-        onKeyUp={saveSelection}
+        onMouseUp={() => {
+          saveSelection()
+          updateSelectedTableCell()
+        }}
+        onKeyUp={() => {
+          saveSelection()
+          updateSelectedTableCell()
+        }}
         onPointerDown={editable ? (e) => {
-          if (e.target instanceof HTMLImageElement) handleImagePointerDown(e, e.target)
+          if (e.target instanceof HTMLImageElement) { handleImagePointerDown(e, e.target); return }
+          const cell = (e.target as Element).closest?.('th, td')
+          if (cell instanceof HTMLTableCellElement) {
+            const rect = cell.getBoundingClientRect()
+            if (e.clientX >= rect.right - 8) startColumnDragResize(e, cell)
+            else if (e.clientY >= rect.bottom - 8) startRowDragResize(e, cell)
+          }
         } : undefined}
+        onMouseMove={editable ? handleViewerMouseMove : undefined}
         onMouseDown={editable ? (e) => {
           if (e.target instanceof HTMLImageElement) {
             e.preventDefault()
@@ -1002,7 +1596,20 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
             }
           } else {
             clearImageSelection()
+            updateSelectedTableCell()
           }
+        }}
+        onCopy={event => {
+          if (!selectedImgRef.current) return
+          event.preventDefault()
+          event.clipboardData.setData('text/html', imageToHtml(
+            selectedImgRef.current.getAttribute('src') ?? '',
+            selectedImgRef.current.getAttribute('alt') ?? '',
+            selectedImgRef.current.getAttribute('width') || selectedImgRef.current.style.width.replace('px', '') || undefined
+          ))
+          event.clipboardData.setData('text/plain', imageToMarkdown(selectedImgRef.current))
+          setImageCopied(true)
+          setTimeout(() => setImageCopied(false), 2000)
         }}
         onPaste={event => {
           event.preventDefault()
@@ -1015,18 +1622,41 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
             if (file) {
               const reader = new FileReader()
               reader.onload = () => {
-                runCommand('insertHTML', `<img src="${reader.result as string}" alt="" style="max-width:100%" />`)
+                insertImages([{ src: reader.result as string }])
               }
               reader.readAsDataURL(file)
               return
             }
           }
 
+          const html = event.clipboardData.getData('text/html')
+          const htmlImages = html ? extractImagesFromHtml(html) : []
+          if (htmlImages.length > 0) {
+            insertImages(htmlImages)
+            return
+          }
+
           const text = event.clipboardData.getData('text/plain')
+          const markdownImages = extractMarkdownImages(text)
+          if (markdownImages.length > 0 && containsOnlyImagesAsText(text)) {
+            insertImages(markdownImages)
+            return
+          }
+
+          if (isImageUrl(text.trim())) {
+            insertImages([{ src: text.trim() }])
+            return
+          }
+
           document.execCommand('insertText', false, text)
           syncContent()
         }}
         onKeyDown={event => {
+          if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && selectedImgRef.current) {
+            event.preventDefault()
+            void handleCopySelectedImage()
+            return
+          }
           if ((event.ctrlKey || event.metaKey) && ['b', 'i', 'z', 'y'].includes(event.key.toLowerCase())) {
             window.setTimeout(syncContent, 0)
           }
@@ -1036,6 +1666,106 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
         }`}
         spellCheck={editable}
       />
+
+      {tableSelection && editable && createPortal(
+        <div
+          ref={tableToolbarRef}
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(tableSelection.tableLeft, window.innerWidth - 580)),
+            top: tableSelection.tableTop,
+            transform: 'translateY(-100%)',
+            width: Math.min(tableSelection.tableWidth, window.innerWidth - 16),
+            zIndex: 210
+          }}
+          className="flex items-center gap-1 bg-surface-2 border border-line border-b-0 rounded-t-lg px-2 py-1.5 select-none text-xs overflow-x-auto"
+        >
+          {/* Context label */}
+          <div className="flex items-center gap-1.5 pr-2 border-r border-line shrink-0">
+            <Table2 className="w-3.5 h-3.5 text-forest" />
+            <span className="text-forest font-medium tracking-wide uppercase" style={{ fontSize: '10px' }}>Table</span>
+          </div>
+
+          {/* Insert row */}
+          <div className="flex items-center gap-0.5 pr-1.5 border-r border-line shrink-0">
+            <Rows3 className="w-3.5 h-3.5 text-forest shrink-0" />
+            <button
+              type="button"
+              title="Insert row above"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => insertTableRow('before')}
+              className="px-1.5 py-0.5 text-ink-2 hover:bg-surface-2 rounded cursor-pointer whitespace-nowrap"
+            >
+              Row above
+            </button>
+            <button
+              type="button"
+              title="Insert row below"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => insertTableRow('after')}
+              className="px-1.5 py-0.5 text-ink-2 hover:bg-surface-2 rounded cursor-pointer whitespace-nowrap"
+            >
+              Row below
+            </button>
+          </div>
+
+          {/* Insert column */}
+          <div className="flex items-center gap-0.5 pr-1.5 border-r border-line shrink-0">
+            <Columns3 className="w-3.5 h-3.5 text-forest shrink-0" />
+            <button
+              type="button"
+              title="Insert column to the left"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => insertTableColumn('before')}
+              className="px-1.5 py-0.5 text-ink-2 hover:bg-surface-2 rounded cursor-pointer whitespace-nowrap"
+            >
+              Col left
+            </button>
+            <button
+              type="button"
+              title="Insert column to the right"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => insertTableColumn('after')}
+              className="px-1.5 py-0.5 text-ink-2 hover:bg-surface-2 rounded cursor-pointer whitespace-nowrap"
+            >
+              Col right
+            </button>
+          </div>
+
+          {/* Delete actions */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Trash2 className="w-3 h-3 text-crimson shrink-0" />
+            <button
+              type="button"
+              title="Delete this row"
+              onMouseDown={e => e.preventDefault()}
+              onClick={deleteTableRow}
+              className="px-1.5 py-0.5 text-crimson hover:bg-crimson/10 rounded cursor-pointer whitespace-nowrap"
+            >
+              Row
+            </button>
+            <button
+              type="button"
+              title="Delete this column"
+              onMouseDown={e => e.preventDefault()}
+              onClick={deleteTableColumn}
+              className="px-1.5 py-0.5 text-crimson hover:bg-crimson/10 rounded cursor-pointer whitespace-nowrap"
+            >
+              Column
+            </button>
+            <button
+              type="button"
+              title="Delete entire table"
+              onMouseDown={e => e.preventDefault()}
+              onClick={deleteTable}
+              className="px-1.5 py-0.5 text-crimson hover:bg-crimson/10 rounded cursor-pointer whitespace-nowrap"
+            >
+              Table
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {deletePos && editable && createPortal(
         <button
@@ -1075,6 +1805,15 @@ function MarkdownViewer({ content, markdownViewerRef, onContentChange }: Markdow
             >
               <Eye className="w-3 h-3" />
               View
+            </button>
+            <button
+              className="flex items-center gap-1 px-1.5 py-0.5 text-xs text-ink-2 hover:bg-surface-2 rounded cursor-pointer transition-colors"
+              title="Copy image"
+              onMouseDown={e => e.preventDefault()}
+              onClick={handleCopySelectedImage}
+            >
+              {imageCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              Copy
             </button>
             <div className="w-px h-3.5 bg-line" />
             <button
