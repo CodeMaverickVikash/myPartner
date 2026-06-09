@@ -12,6 +12,7 @@
   "dependencies": {
     "@mypartner/common": "workspace:*",
     "@mypartner/markdown-editor": "workspace:*",
+    "@mypartner/my-portfolio": "workspace:*",
     "@mypartner/note-taking": "workspace:*",
     "@supabase/supabase-js": "^2.106.2",
     "next": "16.2.6",

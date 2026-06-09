@@ -2,6 +2,7 @@ import { useState, type ReactNode, type SyntheticEvent } from 'react'
 import {
   ArrowRight,
   BookOpenText,
+  BriefcaseBusiness,
   CheckCircle2,
   Download,
   Loader2,
@@ -17,7 +18,7 @@ import { toast } from '@mypartner/common/dependencies'
 import { useInstallPrompt } from '../../pwa/hooks/useInstallPrompt'
 
 export type ThemeMode = 'light' | 'dark'
-export type FeatureId = 'markdown' | 'notes'
+export type FeatureId = 'markdown' | 'notes' | 'portfolio'
 
 export interface AuthSession {
   name: string
@@ -52,6 +53,7 @@ interface FeatureRegistryItem {
 export const featureRegistry: FeatureRegistryItem[] = [
   { id: 'markdown', label: 'Markdown', tagline: 'Live editor with file sync',  route: '/portal/markdown', icon: BookOpenText },
   { id: 'notes',    label: 'Notes',    tagline: 'Pinnable notes, offline-first', route: '/portal/notes',    icon: NotebookTabs },
+  { id: 'portfolio', label: 'Portfolio', tagline: 'Engineer profile and stack', route: '/portal/portfolio', icon: BriefcaseBusiness },
 ]
 
 function BrandMark() {

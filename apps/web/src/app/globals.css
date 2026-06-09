@@ -3,6 +3,7 @@
 
 @source "../../../../packages/common/src";
 @source "../../../../packages/markdown-editor/src";
+@source "../../../../packages/my-portfolio/src";
 @source "../../../../packages/note-taking/src";
 
 @theme {

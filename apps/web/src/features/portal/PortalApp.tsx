@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Toaster } from '@mypartner/common/dependencies'
 import { MarkdownWorkspace } from '@mypartner/markdown-editor'
+import { PortfolioApp } from '@mypartner/my-portfolio'
 import { NotesApp, SharedNotePage } from '@mypartner/note-taking'
 import {
   MyPartnerLogin,
@@ -69,12 +70,20 @@ const getRedirectPath = (path: string, hasSession: boolean) => {
   if (path === '/' || path === '/login' || path === '/app' || path === '/portal') return '/portal/home'
   if (path === '/markdown') return '/portal/markdown'
   if (path === '/notes') return '/portal/notes'
-  if (path === '/portal/home' || path === '/portal/markdown' || path === '/portal/notes') return null
+  if (
+    path === '/portal/home' ||
+    path === '/portal/markdown' ||
+    path === '/portal/notes' ||
+    path === '/portal/portfolio' ||
+    path === '/portal/portfolio/profile' ||
+    path === '/portal/portfolio/tech-stack'
+  ) return null
 
   return '/portal/home'
 }
 
 const getActiveFeatureId = (path: string): FeatureId => {
+  if (path.startsWith('/portal/portfolio')) return 'portfolio'
   if (path === '/portal/notes') return 'notes'
   return 'markdown'
 }
@@ -173,6 +182,7 @@ function PortalApp() {
           {isHome && <PortalHome onNavigate={navigateTo} />}
           {!isHome && activeFeatureId === 'markdown' && <MarkdownWorkspace onNavigate={navigateTo} ownerEmail={session.email} />}
           {!isHome && activeFeatureId === 'notes' && <NotesApp ownerEmail={session.email} onNavigate={navigateTo} />}
+          {!isHome && activeFeatureId === 'portfolio' && <PortfolioApp path={path} onNavigate={navigateTo} />}
         </MyPartnerPortal>
       )}
     </>

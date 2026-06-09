@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -52,10 +53,13 @@ export default function RootLayout({
       className="h-full antialiased"
       suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
-      </head>
+      <head />
       <body className="min-h-full flex flex-col">{children}</body>
+      <Script
+        id="mypartner-bootstrap"
+        strategy="beforeInteractive"
+        dangerouslySetInnerHTML={{ __html: bootstrapScript }}
+      />
     </html>
   )
 }

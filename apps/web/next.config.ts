@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   transpilePackages: [
     "@mypartner/common",
     "@mypartner/markdown-editor",
+    "@mypartner/my-portfolio",
     "@mypartner/note-taking",
   ],
   ...(isDev

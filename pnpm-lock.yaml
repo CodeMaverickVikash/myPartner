@@ -38,6 +38,9 @@ importers:
       '@mypartner/markdown-editor':
         specifier: workspace:*
         version: link:../../packages/markdown-editor
+      '@mypartner/my-portfolio':
+        specifier: workspace:*
+        version: link:../../packages/my-portfolio
       '@mypartner/note-taking':
         specifier: workspace:*
         version: link:../../packages/note-taking
@@ -96,6 +99,18 @@ importers:
       marked:
         specifier: ^18.0.4
         version: 18.0.4
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
+
+  packages/my-portfolio:
+    dependencies:
+      '@mypartner/common':
+        specifier: workspace:*
+        version: link:../common
       react:
         specifier: 19.2.4
         version: 19.2.4
